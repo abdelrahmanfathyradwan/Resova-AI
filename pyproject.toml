@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "resova"
+version = "0.1.0"
+description = "Resova - AI freelancer agent: ingest, filter, score and track freelance opportunities for a single engineer."
+readme = "README.md"
+requires-python = ">=3.12"
+# Compatible ranges only. The authoritative exact versions live in requirements.lock,
+# which is generated from the clean virtualenv and is what the README installs from.
+dependencies = [
+    "SQLAlchemy>=2.1.6,<2.2",
+    "alembic>=1.20.1,<2.0",
+    "pydantic>=2.14.2,<3.0",
+    "pydantic-settings>=2.16.2,<3.0",
+    "fastapi>=0.162.0,<0.163",
+    "uvicorn>=0.54.0,<0.55",
+    "PyYAML>=6.0.3,<7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.2.0,<9.3",
+    "pytest-cov>=7.1.0,<8.0",
+    "ruff>=0.17.3,<0.18",
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "C4", "SIM", "UP", "PTH"]
+
+[tool.ruff.format]
+quote-style = "double"
