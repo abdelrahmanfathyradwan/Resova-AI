@@ -1,0 +1,184 @@
+# Resova - client profile (editable, no secrets, safe to commit).
+#
+# This file is the single source of truth for WHAT Resova looks for and HOW it scores
+# opportunities. Nothing here is hardcoded in Python.
+#
+# Rules encoded here:
+#   * Arabic keywords are only PROPOSED by the engineer (approved: false). Unapproved
+#     Arabic keywords are never used for matching until the client sets approved: true.
+#   * unconfirmed_skills are named in the signed proposal but are NOT part of the client
+#     profile. They are excluded from matching and drafting until the client sets
+#     confirmed: true.
+
+version: 1
+
+# Target job titles the engineer applies for (matching hints only, not exclusions).
+titles:
+  - Mechanical Engineer
+  - Fire Protection & MEP Engineer
+  - Technical Office Engineer
+  - Production Engineer
+  - Professional Presentation & CV Designer
+
+# Working languages of the engineer.
+languages:
+  - ar
+  - en
+
+tracks:
+  - id: engineering
+    label: Fire Protection, MEP & Technical Office Engineering
+    experience_years: 5
+    keywords_en:
+      - Fire Fighting System Design
+      - Fire Protection
+      - Fire Fighting
+      - Fire Alarm
+      - Sprinkler System
+      - Fire Pump
+      - Fire Suppression
+      - Hydraulic Calculations
+      - Shop Drawings
+      - As-Built Drawings
+      - HVAC
+      - MEP Drawings
+      - MEP Coordination
+      - Plumbing Drawings
+      - Ductwork
+      - AutoCAD 2D
+      - BOQ
+      - Quantity Takeoff
+      - Material Submittals
+      - Technical Reports
+      - Engineering Documentation
+      - Technical Office
+      - Production Engineering
+      - Mechanical Engineering
+    # PROPOSED ONLY - awaiting client approval (see docs/OPEN_QUESTIONS.md OQ-6).
+    keywords_ar_proposed:
+      - text: تصميم أنظمة مكافحة الحريق
+        approved: false
+      - text: لوحات تنفيذية
+        approved: false
+      - text: إنذار حريق
+        approved: false
+      - text: نظام الرشاشات
+        approved: false
+      - text: حسابات هيدروليكية
+        approved: false
+      - text: تكييف وتهوية
+        approved: false
+      - text: لوحات كهروميكانيكية
+        approved: false
+      - text: أوتوكاد
+        approved: false
+      - text: حصر الكميات
+        approved: false
+      - text: تقارير هندسية
+        approved: false
+      - text: مضخات الحريق
+        approved: false
+
+  - id: presentation_design
+    label: Professional Presentation & Business Deck Design
+    experience_years: 8
+    keywords_en:
+      - PowerPoint
+      - Presentation Design
+      - Business Presentation
+      - Company Profile Deck
+      - Pitch Deck
+      - Investor Deck
+      - Corporate Presentation
+      - Technical Presentation
+      - Slide Design
+      - Slide Redesign
+      - Presentation Formatting
+      - Deck Redesign
+      - PDF to PowerPoint
+      - Report Presentation
+      - Infographic Slides
+    # PROPOSED ONLY - awaiting client approval (see docs/OPEN_QUESTIONS.md OQ-6).
+    keywords_ar_proposed:
+      - text: تصميم العروض التقديمية
+        approved: false
+      - text: عرض تقديمي احترافي
+        approved: false
+      - text: عرض تعريفي بالشركة
+        approved: false
+      - text: عرض تقديمي للمشروع
+        approved: false
+      - text: تحويل PDF إلى بوربوينت
+        approved: false
+      - text: إعادة تصميم الشرائح
+        approved: false
+
+  - id: cv_resume
+    label: CV / Resume Writing & ATS Optimization
+    experience_years: 8
+    keywords_en:
+      - CV Writing
+      - Resume Writing
+      - ATS-Friendly CV
+      - ATS Optimization
+      - CV Design
+      - Resume Design
+      - Resume Editing
+      - Resume Rewriting
+      - Resume Redesign
+      - LinkedIn Optimization
+      - Cover Letter
+      - Executive CV
+      - Technical CV
+      - Curriculum Vitae
+      - Professional Bio
+    # PROPOSED ONLY - awaiting client approval (see docs/OPEN_QUESTIONS.md OQ-6).
+    keywords_ar_proposed:
+      - text: كتابة السيرة الذاتية
+        approved: false
+      - text: تصميم سيرة ذاتية
+        approved: false
+      - text: سيرة ذاتية متوافقة مع أنظمة التتبع
+        approved: false
+      - text: تحسين حساب لينكد إن
+        approved: false
+      - text: خطاب تقديم
+        approved: false
+      - text: إعادة صياغة السيرة الذاتية
+        approved: false
+
+# Skills named in the signed proposal but NOT in the client profile. Excluded from
+# matching and drafting until the client sets confirmed: true (see OQ-5).
+unconfirmed_skills:
+  - id: architectural_design
+    label: Architectural Design
+    confirmed: false
+  - id: structural_drawings
+    label: Structural Drawings
+    confirmed: false
+  - id: electrical_plumbing_drawings
+    label: Electrical & Plumbing Drawings
+    confirmed: false
+  - id: quantity_surveying
+    label: Quantity Surveying
+    confirmed: false
+  - id: pdf_document_processing
+    label: PDF & Document Processing
+    confirmed: false
+  - id: professional_documents
+    label: Professional Documents
+    confirmed: false
+
+settings:
+  min_match_score: 70
+  score_bands:
+    strong: 85
+    good: 70
+    weak: 50
+  notify_language: ar
+  # TODO(client): keywords that must always disqualify a project (OQ-8).
+  excluded_keywords: []
+  # Budget is NEVER an exclusion criterion; these two are informational only.
+  # TODO(client): confirm if any preference exists.
+  min_budget: null
+  preferred_duration: null

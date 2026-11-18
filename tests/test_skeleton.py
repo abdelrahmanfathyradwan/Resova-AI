@@ -15,8 +15,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 # Packages that must exist now but are only implemented in a later step.
+# NOTE: resova.config was implemented in Step 2.2 / 2.3 and is covered by its own tests.
 STUB_PACKAGES = [
-    "resova.config",
     "resova.db",
     "resova.sources",
     "resova.utils",
