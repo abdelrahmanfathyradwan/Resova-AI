@@ -1,10 +1,12 @@
-"""Minimal local HTTP API.
+"""Minimal local HTTP API (Phase 1 / Step 2.8).
 
-NOT IMPLEMENTED - Phase 1 / Step 2.8 (Minimal API).
-
-Planned content: a FastAPI application exposing a single ``GET /health`` endpoint
-(application version plus database connectivity), bound to 127.0.0.1 by default.
-No other endpoints are planned.
+A FastAPI application exposing a single ``GET /health`` endpoint (application version plus
+database connectivity). It must be bound to ``127.0.0.1``; no other endpoint exists.
 """
 
-__all__: list[str] = []
+from resova.api.app import ALLOWED_HOST, HealthResponse, create_app
+
+__all__ = ["ALLOWED_HOST", "HealthResponse", "app", "create_app"]
+
+#: Module-level ASGI application imported by ``uvicorn resova.api:app``.
+app = create_app()

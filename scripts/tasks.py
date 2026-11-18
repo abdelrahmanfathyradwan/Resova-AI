@@ -144,20 +144,12 @@ def cmd_lint(_args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    # Silent probe: a missing app is an expected state until Step 2.8.
-    probe = subprocess.run(
-        [str(venv_python()), "-c", "import resova.api as api; getattr(api, 'app')"],
-        cwd=str(ROOT),
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if probe.returncode != 0:
+    if args.host not in ("127.0.0.1", "localhost", "::1"):
         print(
-            "\n[NOT IMPLEMENTED - Phase 1 / Step 2.8] There is no FastAPI application yet.",
+            f"Refusing to bind to {args.host!r}: Resova is a local, single-user tool and "
+            "may only listen on the loopback interface (127.0.0.1).",
             flush=True,
         )
-        print("Nothing was started. This command becomes functional in Step 2.8.", flush=True)
         return 2
     return run(
         [
