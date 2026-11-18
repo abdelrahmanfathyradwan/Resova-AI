@@ -10,7 +10,9 @@ Public API:
 from resova.config.profile import (
     ArabicKeywordProposal,
     ClientProfile,
+    OutOfScopeDomain,
     ProfileSettings,
+    ProposedTrack,
     ScoreBands,
     Track,
     UnconfirmedSkill,
@@ -21,7 +23,9 @@ from resova.config.settings import Settings, get_settings
 __all__ = [
     "ArabicKeywordProposal",
     "ClientProfile",
+    "OutOfScopeDomain",
     "ProfileSettings",
+    "ProposedTrack",
     "ScoreBands",
     "Settings",
     "Track",

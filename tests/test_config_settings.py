@@ -75,6 +75,17 @@ def test_email_ingestion_without_host_or_user_lists_them() -> None:
     assert "IMAP_PASSWORD" in message
 
 
+def test_email_poll_mode_off_needs_no_imap_config() -> None:
+    settings = _settings(enable_email_ingestion=True, email_poll_mode="off")
+    assert settings.email_poll_mode == "off"
+    assert settings.imap_password is None
+
+
+def test_invalid_email_poll_mode_rejected() -> None:
+    with pytest.raises(ValidationError):
+        _settings(email_poll_mode="manual")
+
+
 def test_ai_analysis_enabled_without_key_fails_clearly() -> None:
     with pytest.raises(ValidationError) as excinfo:
         Settings(  # type: ignore[call-arg]

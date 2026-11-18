@@ -99,3 +99,49 @@ until a question is closed, the related capability stays `TODO` / stubbed.
 - **Question:** Any keywords that must always disqualify a project (e.g. unpaid work,
   equity-only, "test task for free")? None supplied yet.
 - **Blocks:** Phase 4 filtering (negative rules).
+
+### OQ-9 - A 4th track (architectural drafting / CAD / BOQ) is not yet approved
+
+- **Owner:** client
+- **Status:** Open
+- **Question:** Several accepted examples in the labeled set exceed the written profile
+  (which has exactly three tracks). The evidence points to a possible fourth track
+  around architectural drafting, CAD and BOQ. The client has not approved adding it.
+- **Blocks:** Any 4th-track matching. Recorded as `proposed_tracks` (with
+  `approved: false`) in `config/profile.yaml`; it is never used by matching until the
+  client approves it.
+
+### OQ-10 - What separates accepted from rejected projects is unconfirmed
+
+- **Owner:** client
+- **Status:** TODO(unverified)
+- **Question:** We have accepted and rejected examples, but no stated rule for *why*.
+  The distinguishing criteria (budget? domain? deliverable type? something else?) are not
+  confirmed, so scoring must not rely on an assumed rule.
+- **Blocks:** Phase 4 scoring rubric calibration and evaluation against the labeled set.
+
+### OQ-11 - Does Khamsat send alert emails for "community requests"?
+
+- **Owner:** me (verify) / client
+- **Status:** TODO(unverified)
+- **Question:** Some accepted examples are Khamsat "community requests" (requests for a
+  service that does not yet exist). It is unknown whether Khamsat's alert emails cover
+  these, or only standard projects. If not, the email channel would silently miss them.
+- **Blocks:** Phase 3 source coverage for Khamsat.
+
+### OQ-12 - Exclude weapons / firearms projects?
+
+- **Owner:** client
+- **Status:** Open - decision pending
+- **Question:** Confirm that weapons, firearms and ammunition-component projects must be
+  penalised or excluded. Recorded as an out-of-scope domain (a soft score penalty plus AI
+  prompt guidance), **not** a hard keyword exclusion.
+- **Blocks:** Phase 4 scoring policy and the AI system prompt.
+
+### OQ-13 - Optional timing test: publish time vs alert email time
+
+- **Owner:** client (optional)
+- **Status:** Open (optional)
+- **Question:** If the client can note a project's publish time and the time its alert
+  email arrived, we can measure real delivery latency instead of assuming it. Optional.
+- **Blocks:** The latency metric only (a nice-to-have; the feature works without it).

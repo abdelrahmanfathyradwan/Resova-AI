@@ -204,3 +204,84 @@ def test_get_track_by_id(profile: ClientProfile) -> None:
     assert profile.track("cv_resume").experience_years == 8
     with pytest.raises(KeyError):
         profile.track("nope")
+
+
+# --- proposed tracks -----------------------------------------------------------
+
+
+def test_proposed_tracks_are_not_used_by_matching(profile: ClientProfile) -> None:
+    assert [track.id for track in profile.proposed_tracks] == ["architectural_cad_boq"]
+    assert all(track.approved is False for track in profile.proposed_tracks)
+    assert profile.approved_proposed_tracks == []
+    assert "architectural_cad_boq" not in profile.match_keywords()
+
+
+def test_approving_a_proposed_track_flips_the_property(profile: ClientProfile) -> None:
+    data = _data(profile)
+    data["proposed_tracks"][0]["approved"] = True
+    other = ClientProfile.model_validate(data)
+    assert other.approved_proposed_tracks == ["architectural_cad_boq"]
+
+
+def test_proposed_track_id_cannot_clash_with_active_track(profile: ClientProfile) -> None:
+    data = _data(profile)
+    data["proposed_tracks"][0]["id"] = data["tracks"][0]["id"]
+    with pytest.raises(ValidationError):
+        ClientProfile.model_validate(data)
+
+
+# --- out-of-scope domains ------------------------------------------------------
+
+
+def test_out_of_scope_domains_are_soft_and_unapproved(profile: ClientProfile) -> None:
+    ids = [domain.id for domain in profile.out_of_scope_domains]
+    assert ids == [
+        "architecture_landscape_interior_finishing",
+        "software_automation_development",
+        "weapons_firearms",
+    ]
+    assert all(domain.approved is False for domain in profile.out_of_scope_domains)
+    assert profile.active_out_of_scope_domains == []
+
+
+def test_duplicate_out_of_scope_domain_ids_rejected(profile: ClientProfile) -> None:
+    data = _data(profile)
+    data["out_of_scope_domains"].append(copy.deepcopy(data["out_of_scope_domains"][0]))
+    with pytest.raises(ValidationError):
+        ClientProfile.model_validate(data)
+
+
+# --- exact Arabic keyword lists (the list sent to the client) -------------------
+
+
+def test_arabic_keyword_lists_are_exactly_as_proposed(profile: ClientProfile) -> None:
+    expected = {
+        "engineering": [
+            "مكافحة حريق",
+            "إنذار حريق",
+            "رش آلي",
+            "شبكة إطفاء",
+            "تكييف وتهوية",
+            "رسومات تنفيذية",
+            "شوب دروينج",
+            "أوتوكاد",
+            "حصر كميات",
+            "مقايسة",
+            "مضخات حريق",
+        ],
+        "presentation_design": [
+            "تصميم عرض تقديمي",
+            "بوربوينت",
+            "بروفايل شركة",
+            "عرض احترافي",
+        ],
+        "cv_resume": [
+            "سيرة ذاتية",
+            "كتابة CV",
+            "تحسين السيرة الذاتية",
+            "لينكدإن",
+            "خطاب تقديم",
+        ],
+    }
+    for track in profile.tracks:
+        assert [item.text for item in track.keywords_ar_proposed] == expected[track.id]

@@ -9,6 +9,10 @@
 #   * unconfirmed_skills are named in the signed proposal but are NOT part of the client
 #     profile. They are excluded from matching and drafting until the client sets
 #     confirmed: true.
+#   * proposed_tracks exceed the written profile. They are never used by matching until
+#     the client approves them (see docs/OPEN_QUESTIONS.md OQ-9).
+#   * out_of_scope_domains steer the AI and apply a SOFT score penalty - they are NOT
+#     hard keyword exclusions (see OQ-12).
 
 version: 1
 
@@ -54,29 +58,29 @@ tracks:
       - Technical Office
       - Production Engineering
       - Mechanical Engineering
-    # PROPOSED ONLY - awaiting client approval (see docs/OPEN_QUESTIONS.md OQ-6).
+    # PROPOSED ONLY - the exact list sent to the client for approval (OQ-6).
     keywords_ar_proposed:
-      - text: تصميم أنظمة مكافحة الحريق
-        approved: false
-      - text: لوحات تنفيذية
+      - text: مكافحة حريق
         approved: false
       - text: إنذار حريق
         approved: false
-      - text: نظام الرشاشات
+      - text: رش آلي
         approved: false
-      - text: حسابات هيدروليكية
+      - text: شبكة إطفاء
         approved: false
       - text: تكييف وتهوية
         approved: false
-      - text: لوحات كهروميكانيكية
+      - text: رسومات تنفيذية
+        approved: false
+      - text: شوب دروينج
         approved: false
       - text: أوتوكاد
         approved: false
-      - text: حصر الكميات
+      - text: حصر كميات
         approved: false
-      - text: تقارير هندسية
+      - text: مقايسة
         approved: false
-      - text: مضخات الحريق
+      - text: مضخات حريق
         approved: false
 
   - id: presentation_design
@@ -98,19 +102,15 @@ tracks:
       - PDF to PowerPoint
       - Report Presentation
       - Infographic Slides
-    # PROPOSED ONLY - awaiting client approval (see docs/OPEN_QUESTIONS.md OQ-6).
+    # PROPOSED ONLY - the exact list sent to the client for approval (OQ-6).
     keywords_ar_proposed:
-      - text: تصميم العروض التقديمية
+      - text: تصميم عرض تقديمي
         approved: false
-      - text: عرض تقديمي احترافي
+      - text: بوربوينت
         approved: false
-      - text: عرض تعريفي بالشركة
+      - text: بروفايل شركة
         approved: false
-      - text: عرض تقديمي للمشروع
-        approved: false
-      - text: تحويل PDF إلى بوربوينت
-        approved: false
-      - text: إعادة تصميم الشرائح
+      - text: عرض احترافي
         approved: false
 
   - id: cv_resume
@@ -132,20 +132,41 @@ tracks:
       - Technical CV
       - Curriculum Vitae
       - Professional Bio
-    # PROPOSED ONLY - awaiting client approval (see docs/OPEN_QUESTIONS.md OQ-6).
+    # PROPOSED ONLY - the exact list sent to the client for approval (OQ-6).
     keywords_ar_proposed:
-      - text: كتابة السيرة الذاتية
+      - text: سيرة ذاتية
         approved: false
-      - text: تصميم سيرة ذاتية
+      - text: كتابة CV
         approved: false
-      - text: سيرة ذاتية متوافقة مع أنظمة التتبع
+      - text: تحسين السيرة الذاتية
         approved: false
-      - text: تحسين حساب لينكد إن
+      - text: لينكدإن
         approved: false
       - text: خطاب تقديم
         approved: false
-      - text: إعادة صياغة السيرة الذاتية
-        approved: false
+
+# Candidate tracks that exceed the written profile. NOT used by matching until the
+# client approves them (OQ-9).
+proposed_tracks:
+  - id: architectural_cad_boq
+    label: Architectural Drafting, CAD & BOQ
+    approved: false
+    rationale: >-
+      Accepted examples exceed the written profile (architectural drafting, CAD and
+      BOQ work). Pending client approval before it can be used by matching.
+
+# Domains to steer the AI away from and penalise softly. NOT hard keyword exclusions,
+# and only applied once the client approves them (OQ-12).
+out_of_scope_domains:
+  - id: architecture_landscape_interior_finishing
+    label: Architecture / landscape / interior design / finishing-materials consultation
+    approved: false
+  - id: software_automation_development
+    label: Software / automation development (incl. n8n / AI tooling), even when the deliverable is a presentation
+    approved: false
+  - id: weapons_firearms
+    label: Weapons / firearms / ammunition components
+    approved: false
 
 # Skills named in the signed proposal but NOT in the client profile. Excluded from
 # matching and drafting until the client sets confirmed: true (see OQ-5).

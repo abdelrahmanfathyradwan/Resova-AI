@@ -60,7 +60,9 @@ class Settings(BaseSettings):
     enable_email_ingestion: bool = True
     enable_mostaqel: bool = True
     enable_khamsat: bool = True
-    email_poll_mode: Literal["polling"] = "polling"
+    # ``off`` disables email polling entirely (dev/tests). Manual paste is a separate,
+    # always-available channel handled by the Telegram bot (Phase 5), not a poll mode.
+    email_poll_mode: Literal["polling", "off"] = "polling"
     poll_interval_seconds: int = Field(default=60, ge=30, le=3600)
     imap_host: str = ""
     imap_user: str = ""
@@ -81,7 +83,7 @@ class Settings(BaseSettings):
     def _require_secrets_for_enabled_features(self) -> Settings:
         missing: list[str] = []
 
-        if self.enable_email_ingestion:
+        if self.enable_email_ingestion and self.email_poll_mode == "polling":
             if not self.imap_host.strip():
                 missing.append("IMAP_HOST")
             if not self.imap_user.strip():

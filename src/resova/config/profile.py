@@ -70,6 +70,33 @@ class UnconfirmedSkill(BaseModel):
     confirmed: bool = False
 
 
+class ProposedTrack(BaseModel):
+    """A candidate track that exceeds the written profile, awaiting client approval.
+
+    Never used by matching until the client approves it (``approved: true``).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    label: str
+    approved: bool = False
+    rationale: str | None = None
+
+
+class OutOfScopeDomain(BaseModel):
+    """A domain to steer the AI away from and to penalise softly.
+
+    Intentionally NOT a hard keyword exclusion. Only approved entries are applied.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    label: str
+    approved: bool = False
+
+
 class ScoreBands(BaseModel):
     """Score band boundaries, which must satisfy ``strong > good > weak``."""
 
@@ -112,6 +139,8 @@ class ClientProfile(BaseModel):
     languages: list[str]
     tracks: list[Track]
     unconfirmed_skills: list[UnconfirmedSkill] = Field(default_factory=list)
+    proposed_tracks: list[ProposedTrack] = Field(default_factory=list)
+    out_of_scope_domains: list[OutOfScopeDomain] = Field(default_factory=list)
     settings: ProfileSettings
 
     @model_validator(mode="after")
@@ -121,9 +150,17 @@ class ClientProfile(BaseModel):
         track_ids = [track.id for track in self.tracks]
         if len(set(track_ids)) != len(track_ids):
             raise ValueError(f"track ids must be unique, got {track_ids}")
-        skill_ids = [skill.id for skill in self.unconfirmed_skills]
-        if len(set(skill_ids)) != len(skill_ids):
-            raise ValueError(f"unconfirmed skill ids must be unique, got {skill_ids}")
+        for name, ids in (
+            ("unconfirmed skill", [skill.id for skill in self.unconfirmed_skills]),
+            ("proposed track", [track.id for track in self.proposed_tracks]),
+            ("out-of-scope domain", [domain.id for domain in self.out_of_scope_domains]),
+        ):
+            if len(set(ids)) != len(ids):
+                raise ValueError(f"{name} ids must be unique, got {ids}")
+        proposed_ids = {track.id for track in self.proposed_tracks}
+        collision = proposed_ids.intersection(track_ids)
+        if collision:
+            raise ValueError(f"proposed track ids must not clash with active tracks: {collision}")
         return self
 
     def track(self, track_id: str) -> Track:
@@ -143,8 +180,22 @@ class ClientProfile(BaseModel):
         """Labels of skills still awaiting confirmation (excluded from matching)."""
         return [skill.label for skill in self.unconfirmed_skills if not skill.confirmed]
 
+    @property
+    def approved_proposed_tracks(self) -> list[str]:
+        """Ids of extra tracks the client has approved (empty until approved)."""
+        return [track.id for track in self.proposed_tracks if track.approved]
+
+    @property
+    def active_out_of_scope_domains(self) -> list[str]:
+        """Labels of out-of-scope domains approved for soft penalties."""
+        return [domain.label for domain in self.out_of_scope_domains if domain.approved]
+
     def match_keywords(self) -> dict[str, list[str]]:
-        """Per-track keywords available for matching (English plus approved Arabic)."""
+        """Per-track keywords available for matching (English plus approved Arabic).
+
+        Note: ``proposed_tracks`` keywords are intentionally absent - proposed tracks are
+        never used by matching until the client approves them.
+        """
         return {item.id: item.match_keywords for item in self.tracks}
 
     def canonical_json(self) -> str:

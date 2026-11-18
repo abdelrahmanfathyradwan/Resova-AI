@@ -32,11 +32,11 @@ replaced by `"***"` (or `None` when unset).
 | `ENABLE_EMAIL_INGESTION` | `true` | restart | no | Master switch for reading the client's own alert mailbox |
 | `ENABLE_MOSTAQL` | `true` | restart | no | Parse Mostaql alert emails (priority 1) |
 | `ENABLE_KHAMSAT` | `true` | restart | no | Parse Khamsat alert emails (priority 2) |
-| `EMAIL_POLL_MODE` | `polling` | restart | no | Only `polling` today - stdlib `imaplib` has no IDLE (see [OPEN_QUESTIONS](OPEN_QUESTIONS.md)) |
+| `EMAIL_POLL_MODE` | `polling` | restart | no | `polling` \| `off` (`off` = no email polling, for dev/tests; manual paste is a separate always-available Telegram channel, not a poll mode). IDLE is unsupported - see [OQ-1](OPEN_QUESTIONS.md) |
 | `POLL_INTERVAL_SECONDS` | `60` | restart | no | 30-3600; 30-60 recommended |
-| `IMAP_HOST` | _(empty)_ | restart | no | Required when `ENABLE_EMAIL_INGESTION=true` |
-| `IMAP_USER` | _(empty)_ | restart | no | Required when `ENABLE_EMAIL_INGESTION=true` |
-| `IMAP_PASSWORD` | _(unset)_ | restart | **yes** | Required when `ENABLE_EMAIL_INGESTION=true` |
+| `IMAP_HOST` | _(empty)_ | restart | no | Required when `ENABLE_EMAIL_INGESTION=true` and `EMAIL_POLL_MODE=polling` |
+| `IMAP_USER` | _(empty)_ | restart | no | Required when `ENABLE_EMAIL_INGESTION=true` and `EMAIL_POLL_MODE=polling` |
+| `IMAP_PASSWORD` | _(unset)_ | restart | **yes** | Required when `ENABLE_EMAIL_INGESTION=true` and `EMAIL_POLL_MODE=polling` |
 | `ENABLE_AI_ANALYSIS` | `true` | restart | no | OpenAI-backed opportunity scoring |
 | `OPENAI_API_KEY` | _(unset)_ | restart | **yes** | Required when `ENABLE_AI_ANALYSIS=true` |
 | `OPENAI_MODEL` | `gpt-4o-mini` | restart | no | Model id (confirmed in Phase 4) |
