@@ -7,6 +7,9 @@ to Telegram, prevents duplicates and can later generate an editable proposal dra
 
 ## Hard rules (never violated)
 
+> These rules are normative and live in [docs/PROJECT_RULES.md](docs/PROJECT_RULES.md).
+> The summary below is a convenience copy; if the two ever differ, PROJECT_RULES.md wins.
+
 - **Compliance:** no scraping of Mostaql/Khamsat or any site; no bypassing authentication,
   CAPTCHA, bot protection or rate limits; no session cookies; no third-party scraping
   services; no automatic fetching of platform project URLs; platform passwords are never

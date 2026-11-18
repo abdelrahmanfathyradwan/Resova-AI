@@ -4,13 +4,16 @@ Items that are unresolved, unverified, or blocked on a decision. Each item names
 **owner**, a **status**, and **what it blocks**. Nothing here may be guessed at in code:
 until a question is closed, the related capability stays `TODO` / stubbed.
 
+This document may be shared with the client, so owners are named by role only - never by
+a person's name.
+
 ## Owners
 
-| Code | Who | Can resolve by |
-| ---- | --- | -------------- |
+| Code | Role | Can resolve by |
+| ---- | ---- | -------------- |
 | **client** | The freelance engineer Resova works for | Answering / approving |
-| **me** | You (the project owner) | Verifying with real data, providing access, approving |
-| **you** | The assistant engineer (me, building Resova) | Researching, proposing, implementing |
+| **owner** | The project owner (commissions and runs Resova) | Verifying with real data, providing access, approving |
+| **dev** | The engineer building Resova | Researching, proposing, implementing |
 
 ## Status legend
 
@@ -24,7 +27,7 @@ until a question is closed, the related capability stays `TODO` / stubbed.
 
 ### OQ-1 - stdlib `imaplib` has no IDLE support
 
-- **Owner:** you (propose) / me (approve)
+- **Owner:** dev (propose) / owner (approve)
 - **Status:** Deciding - deferred to Phase 3
 - **Question:** `imaplib` in the standard library cannot do IMAP IDLE, so new alert
   emails can only be discovered by polling. Choose between short-interval polling
@@ -34,7 +37,7 @@ until a question is closed, the related capability stays `TODO` / stubbed.
 
 ### OQ-2 - Gmail / Outlook IMAP auth constraints
 
-- **Owner:** me (verify on the real mailbox)
+- **Owner:** owner (verify on the real mailbox)
 - **Status:** TODO(unverified)
 - **Question:** Gmail requires an App Password (or OAuth2) and has moved on from
   "less secure apps"; Outlook/Microsoft 365 has its own app-password / OAuth policy.
@@ -44,7 +47,7 @@ until a question is closed, the related capability stays `TODO` / stubbed.
 
 ### OQ-3 - Exact format, fields and latency of Mostaql / Khamsat alert emails
 
-- **Owner:** me (supply real sample emails)
+- **Owner:** owner (supply real sample emails)
 - **Status:** TODO(unverified)
 - **Question:** We have not seen a real alert email from either platform. Unknown:
   the field set (title, budget, duration, competition count, URL), whether the body is
@@ -54,7 +57,7 @@ until a question is closed, the related capability stays `TODO` / stubbed.
 
 ### OQ-4 - Platform terms on automated processing of their own emails
 
-- **Owner:** me / client (account holders)
+- **Owner:** owner / client (account holders)
 - **Status:** TODO(unverified)
 - **Question:** Mostaql and Khamsat terms have not been reviewed for whether
   programmatically reading/processing the notification emails they send to the
@@ -76,7 +79,7 @@ until a question is closed, the related capability stays `TODO` / stubbed.
 
 ### OQ-6 - Approved Arabic keywords
 
-- **Owner:** client (approve) / you (proposed the list)
+- **Owner:** client (approve) / dev (proposed the list)
 - **Status:** Proposed
 - **Question:** Arabic keywords were not supplied, so the assistant proposed a starter
   list per track. They are stored under `keywords_ar_proposed` with `approved: false`
@@ -122,7 +125,7 @@ until a question is closed, the related capability stays `TODO` / stubbed.
 
 ### OQ-11 - Does Khamsat send alert emails for "community requests"?
 
-- **Owner:** me (verify) / client
+- **Owner:** owner (verify) / client
 - **Status:** TODO(unverified)
 - **Question:** Some accepted examples are Khamsat "community requests" (requests for a
   service that does not yet exist). It is unknown whether Khamsat's alert emails cover
