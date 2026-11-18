@@ -1,14 +1,28 @@
-"""Shared utilities: exception hierarchy, retry helper and structured logging.
+"""Shared utilities: normalization, dedup identity keys, errors, retry and logging.
 
-NOT IMPLEMENTED - Phase 1 / Step 2.6 (Utilities).
+Implemented:
+- Step 2.5: text/URL normalization (:mod:`resova.utils.normalize`) and the dedup
+  identity keys (:mod:`resova.utils.identity`).
 
-Planned content:
-- Exception hierarchy: ConfigError, SourceError (AUTH | RATE_LIMITED | UNAVAILABLE |
-  INVALID_DATA), AIError, TelegramError, StorageError.
-- Bounded exponential backoff with jitter, injectable sleep so tests run instantly,
-  and a rule that permanent errors are never retried.
-- Structured logging with a redaction filter for API keys, Telegram bot tokens,
-  IMAP passwords and sensitive URL query parameters.
+Pending (later steps): exception hierarchy, bounded backoff retry and the logging
+redaction filter.
 """
 
-__all__: list[str] = []
+from __future__ import annotations
+
+from resova.utils.identity import (
+    MIN_DESCRIPTION_LENGTH,
+    content_key,
+    external_key,
+    url_key,
+)
+from resova.utils.normalize import normalize_text, normalize_url
+
+__all__ = [
+    "MIN_DESCRIPTION_LENGTH",
+    "content_key",
+    "external_key",
+    "normalize_text",
+    "normalize_url",
+    "url_key",
+]

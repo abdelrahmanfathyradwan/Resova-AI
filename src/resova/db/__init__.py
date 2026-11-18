@@ -26,6 +26,13 @@ from resova.db.models import (
     UserAction,
     UserProfile,
 )
+from resova.db.repositories import (
+    LatencyStats,
+    ProjectRepository,
+    ProjectUpsert,
+    UpsertOutcome,
+    UpsertResult,
+)
 from resova.db.session import (
     create_db_engine,
     create_schema,
@@ -36,11 +43,14 @@ from resova.db.session import (
 __all__ = [
     "Base",
     "DraftStatus",
+    "LatencyStats",
     "Notification",
     "NotificationStatus",
     "Platform",
     "Project",
     "ProjectAnalysis",
+    "ProjectRepository",
+    "ProjectUpsert",
     "ProposalDraft",
     "ScoreBand",
     "SourceKind",
@@ -49,6 +59,8 @@ __all__ = [
     "SyncStatus",
     "SystemSetting",
     "TimestampMixin",
+    "UpsertOutcome",
+    "UpsertResult",
     "UserAction",
     "UserProfile",
     "create_db_engine",
