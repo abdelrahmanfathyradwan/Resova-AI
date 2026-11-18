@@ -1,0 +1,4 @@
+# Normalize all text files to LF inside the repository, including Windows checkouts,
+# so a Linux VPS deployment never sees CRLF artefacts.
+# No PowerShell scripts exist in this project yet, so no `*.ps1 eol=crlf` rule is needed.
+* text=auto eol=lf
