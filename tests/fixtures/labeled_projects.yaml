@@ -1,0 +1,217 @@
+# Resova - labeled examples for later scoring evaluation.
+#
+# All entries are SHORT PARAPHRASES: no screenshots, no commenter names, no URLs.
+# source_kind is website_page for every entry - these are NOT alert-email samples.
+# Every label is reason: pending_client until the client confirms it.
+# The holdout split is never used while tuning.
+
+version: 1
+
+projects:
+  # --- rejected (Mostaql) ------------------------------------------------------
+  - id: mst_rej_01
+    platform: mostaql
+    source_kind: website_page
+    category: design
+    budget: "$50 fixed"
+    duration: "3 days"
+    deliverable_type: design modification
+    comments_count: null
+    label: reject
+    reason: pending_client
+    split: dev
+
+  - id: mst_rej_02
+    platform: mostaql
+    source_kind: website_page
+    category: automation
+    budget: null
+    duration: null
+    deliverable_type: automation workflow for educational kits
+    comments_count: null
+    label: reject
+    reason: pending_client
+    split: dev
+
+  - id: mst_rej_03
+    platform: mostaql
+    source_kind: website_page
+    category: engineering
+    budget: null
+    duration: null
+    deliverable_type: finishing materials engineering consultation
+    comments_count: null
+    label: reject
+    reason: pending_client
+    split: dev
+
+  # --- accepted (Khamsat community requests) -----------------------------------
+  - id: kha_acc_01
+    platform: khamsat
+    source_kind: website_page
+    category: presentation
+    budget: null
+    duration: null
+    deliverable_type: presentation on networking
+    comments_count: null
+    label: accept
+    reason: pending_client
+    split: dev
+
+  - id: kha_acc_02
+    platform: khamsat
+    source_kind: website_page
+    category: presentation
+    budget: null
+    duration: null
+    deliverable_type: presentation redesign
+    comments_count: null
+    label: accept
+    reason: pending_client
+    split: dev
+
+  - id: kha_acc_03
+    platform: khamsat
+    source_kind: website_page
+    category: presentation
+    budget: null
+    duration: null
+    deliverable_type: presentation for an English trainer
+    comments_count: null
+    label: accept
+    reason: pending_client
+    split: holdout
+
+  - id: kha_acc_04
+    platform: khamsat
+    source_kind: website_page
+    category: presentation
+    budget: null
+    duration: null
+    deliverable_type: simple presentation on artificial intelligence
+    comments_count: null
+    label: accept
+    reason: pending_client
+    split: dev
+
+  - id: kha_acc_05
+    platform: khamsat
+    source_kind: website_page
+    category: cv
+    budget: null
+    duration: null
+    deliverable_type: ATS-friendly CV
+    comments_count: null
+    label: accept
+    reason: pending_client
+    split: holdout
+
+  # --- accepted (Mostaql) ------------------------------------------------------
+  - id: mst_acc_06
+    platform: mostaql
+    source_kind: website_page
+    category: engineering
+    budget: "$250"
+    duration: "7 days"
+    deliverable_type: electrical, plumbing and foundation drawings for a small flat
+    comments_count: 11
+    label: accept
+    reason: pending_client
+    split: dev
+
+  - id: mst_acc_07
+    platform: mostaql
+    source_kind: website_page
+    category: presentation
+    budget: "$50"
+    duration: "2 days"
+    deliverable_type: converting a book into a presentation
+    comments_count: 6
+    label: accept
+    reason: pending_client
+    split: dev
+
+  - id: mst_acc_08
+    platform: mostaql
+    source_kind: website_page
+    category: engineering
+    budget: null
+    duration: null
+    deliverable_type: extracting structural plans into a PDF
+    comments_count: 9
+    label: accept
+    reason: pending_client
+    split: holdout
+
+  - id: mst_acc_09
+    platform: mostaql
+    source_kind: website_page
+    category: engineering
+    budget: null
+    duration: null
+    deliverable_type: bill of quantities and specifications for a residential project
+    comments_count: 14
+    label: accept
+    reason: pending_client
+    split: holdout
+
+  - id: mst_acc_10
+    platform: mostaql
+    source_kind: website_page
+    category: drafting
+    budget: null
+    duration: null
+    deliverable_type: farm land subdivision sketch
+    comments_count: 5
+    label: accept
+    reason: pending_client
+    split: dev
+
+  - id: mst_acc_11
+    platform: mostaql
+    source_kind: website_page
+    category: presentation
+    budget: null
+    duration: null
+    deliverable_type: quantitative aptitude curriculum as PDF and presentation
+    comments_count: 8
+    label: accept
+    reason: pending_client
+    split: dev
+
+  - id: mst_acc_12
+    platform: mostaql
+    source_kind: website_page
+    category: architecture
+    budget: null
+    duration: null
+    deliverable_type: architectural design for a large residential plot
+    comments_count: 19
+    label: accept
+    reason: pending_client
+    split: holdout
+
+  - id: mst_acc_13
+    platform: mostaql
+    source_kind: website_page
+    category: engineering
+    budget: null
+    duration: null
+    deliverable_type: executive drawings for a small office
+    comments_count: 7
+    label: accept
+    reason: pending_client
+    split: dev
+
+  # --- policy-excluded ---------------------------------------------------------
+  - id: mst_pol_01
+    platform: mostaql
+    source_kind: website_page
+    category: engineering
+    budget: null
+    duration: null
+    deliverable_type: 3D CAD model of a firearm component
+    comments_count: null
+    label: reject_policy
+    reason: pending_client
+    split: dev
