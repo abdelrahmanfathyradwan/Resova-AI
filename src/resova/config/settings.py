@@ -125,3 +125,25 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Return the process-wide cached :class:`Settings` instance."""
     return Settings()
+
+
+class _DatabaseOnly(BaseSettings):
+    """Reads only ``DATABASE_URL`` from the environment/``.env``.
+
+    Used by Alembic, which needs the database URL but must not require feature secrets
+    (a migration on a fresh clone has to work before any secret is configured).
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    database_url: str = "sqlite:///./resova.db"
+
+
+def get_database_url() -> str:
+    """Resolve only the database URL, without validating feature secrets."""
+    return _DatabaseOnly().database_url

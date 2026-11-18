@@ -10,7 +10,7 @@ import logging
 import pytest
 from pydantic import ValidationError
 
-from resova.config.settings import Settings, get_settings
+from resova.config.settings import Settings, get_database_url, get_settings
 
 SECRET = "sk-live-do-not-log-me-0123456789"
 
@@ -197,3 +197,18 @@ def test_get_settings_reads_environment(monkeypatch: pytest.MonkeyPatch) -> None
         assert settings.enable_telegram is False
     finally:
         get_settings.cache_clear()
+
+
+# --- database URL helper (used by Alembic) -------------------------------------
+
+
+def test_get_database_url_reads_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///./from-env.db")
+    assert get_database_url() == "sqlite:///./from-env.db"
+
+
+def test_get_database_url_needs_no_feature_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Email, AI and Telegram are all enabled by default, yet resolving the database URL
+    # must not require their secrets (a fresh clone has to be able to migrate).
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///./db-only.db")
+    assert get_database_url() == "sqlite:///./db-only.db"

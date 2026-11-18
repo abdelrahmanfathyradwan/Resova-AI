@@ -18,7 +18,7 @@ from resova.config.profile import (
     UnconfirmedSkill,
     load_profile,
 )
-from resova.config.settings import Settings, get_settings
+from resova.config.settings import Settings, get_database_url, get_settings
 
 __all__ = [
     "ArabicKeywordProposal",
@@ -30,6 +30,7 @@ __all__ = [
     "Settings",
     "Track",
     "UnconfirmedSkill",
+    "get_database_url",
     "get_settings",
     "load_profile",
 ]
