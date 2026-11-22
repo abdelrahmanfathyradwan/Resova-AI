@@ -4,7 +4,7 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /build
 
-# Install build dependencies for compiling psycopg2 and C extensions
+# Install build dependencies for compiling C extensions
 RUN apt-get update && \
     apt-get install -y --no-install-recommends gcc libpq-dev && \
     rm -rf /var/lib/apt/lists/*

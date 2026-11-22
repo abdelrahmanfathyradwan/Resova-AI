@@ -37,7 +37,7 @@
 
 ### A. Database & URL Normalization
 - **Managed PostgreSQL:** Provides persistent storage with automatic daily backups and SSL encryption.
-- **Dialect Normalization:** Railway commonly provides URLs prefixed with `postgres://...`. Resova's configuration and database session layers automatically normalize `postgres://` to `postgresql://` so that SQLAlchemy 2.x and `psycopg2-binary` connect smoothly without syntax errors.
+- **Dialect Normalization:** Railway commonly provides URLs prefixed with `postgres://...`. Resova's configuration and database session layers automatically normalize `postgres://` to `postgresql://` so that SQLAlchemy 2.x and `psycopg[binary]` connect smoothly without syntax errors.
 - **Connection Health:** `pool_pre_ping=True` and connection recycling (`pool_recycle=300`) prevent dropped connections from causing HTTP 500 errors.
 
 ### B. Safe Single-Run Migrations (`preDeploy`)
