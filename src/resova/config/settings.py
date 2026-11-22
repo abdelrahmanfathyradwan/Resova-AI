@@ -15,7 +15,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 #: Fields that hold secrets and must be redacted from any log-safe output.
@@ -58,6 +58,14 @@ class Settings(BaseSettings):
 
     # --- Email ingestion (the client's own platform alert mailbox) ---
     enable_email_ingestion: bool = True
+    # --- Listing poller (public listings) ---
+    enable_listing_poller: bool = False
+    listing_poller_ack: bool = False
+    mostaql_listing_urls: Any = Field(default_factory=list)
+    khamsat_listing_urls: Any = Field(default_factory=list)
+    listing_poll_interval_seconds: int = Field(default=60, ge=60, le=3600)
+    listing_poll_jitter_seconds: int = Field(default=10, ge=0)
+    user_agent_contact: str = ""
     enable_mostaqel: bool = True
     enable_khamsat: bool = True
     # ``off`` disables email polling entirely (dev/tests). Manual paste is a separate,
@@ -79,8 +87,42 @@ class Settings(BaseSettings):
     telegram_bot_token: SecretStr | None = None
     telegram_allowed_user_id: int | None = None
 
+    @field_validator("mostaql_listing_urls", "khamsat_listing_urls", mode="before")
+    @classmethod
+    def _split_urls(cls, v: object) -> list[str]:
+        """Accept JSON array or comma/space separated string for listing URLs.
+        Returns a list of cleaned URLs.
+        """
+        import json
+
+        if v is None:
+            return []
+        if isinstance(v, (list, tuple)):
+            return [str(item).strip() for item in v]
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                return []
+            # JSON array detection
+            if v.startswith("["):
+                try:
+                    arr = json.loads(v)
+                    if isinstance(arr, list):
+                        return [str(item).strip() for item in arr]
+                except Exception:
+                    pass
+            # Split on commas or whitespace
+            parts = [
+                p.strip() for p in v.replace("\n", ",").replace(";", ",").split(",") if p.strip()
+            ]
+            return parts
+        return []
+
     @model_validator(mode="after")
     def _require_secrets_for_enabled_features(self) -> Settings:
+        """Validate that required secrets are present for enabled features.
+        Raises ValueError which Pydantic turns into ValidationError.
+        """
         missing: list[str] = []
 
         if self.enable_email_ingestion and self.email_poll_mode == "polling":
@@ -95,6 +137,20 @@ class Settings(BaseSettings):
             missing.append("OPENAI_API_KEY")
 
         if self.enable_telegram:
+            if _is_blank(self.telegram_bot_token):
+                missing.append("TELEGRAM_BOT_TOKEN")
+            if self.telegram_allowed_user_id is None or self.telegram_allowed_user_id <= 0:
+                missing.append("TELEGRAM_ALLOWED_USER_ID")
+
+        if self.enable_listing_poller:
+            if not self.listing_poller_ack:
+                missing.append("LISTING_POLLER_ACK (must be true to enable poller)")
+            if not self.mostaql_listing_urls and not self.khamsat_listing_urls:
+                msg = (
+                    "MOTION: Provide at least one listing URL "
+                    "(MOSTAQL_LISTING_URLS or KHAMSAT_LISTING_URLS)"
+                )
+                missing.append(msg)
             if _is_blank(self.telegram_bot_token):
                 missing.append("TELEGRAM_BOT_TOKEN")
             if self.telegram_allowed_user_id is None or self.telegram_allowed_user_id <= 0:

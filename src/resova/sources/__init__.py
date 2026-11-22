@@ -1,14 +1,8 @@
 """Opportunity sources (Phase 1 / Step 2.7).
 
-This package defines the *source contract* only: the :class:`BaseSource` interface, the
-unified project model and the capability/status descriptors. Concrete Mostaql and Khamsat
-sources are **not implemented yet** - they wait for real sample alert emails. Their exact
-status labels are recorded in ``docs/SOURCES.md``.
-
-Compliance: discovery is limited to the client's own platform notification emails and
-manual paste of project text. No scraping, no bypassing of authentication, bot protection
-or rate limits, no session cookies, no third-party scraping services and no automatic
-fetching of platform project URLs (see ``docs/PROJECT_RULES.md``).
+This package defines the source contract and concrete opportunity discovery sources:
+- ListingPoller: polls public listing pages for Mostaql & Khamsat (disabled by default).
+- EmailSource: ingests client platform alert emails via IMAP (disabled by default).
 """
 
 from resova.sources.base import (
@@ -18,11 +12,16 @@ from resova.sources.base import (
     SourceStatus,
     UnifiedProject,
 )
+from resova.sources.email_source import EmailSource, parse_email_message
+from resova.sources.listing_poller import ListingPoller
 
 __all__ = [
     "BaseSource",
+    "EmailSource",
+    "ListingPoller",
     "RawProject",
     "SourceCapabilities",
     "SourceStatus",
     "UnifiedProject",
+    "parse_email_message",
 ]

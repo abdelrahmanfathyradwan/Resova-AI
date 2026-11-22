@@ -1,16 +1,9 @@
 """FastAPI application (Phase 1 / Step 2.8).
 
-The API is deliberately tiny: **exactly one** endpoint, ``GET /health``, which reports the
-application version and whether the configured database is reachable. There is no other
-endpoint, and none is planned for Phase 1.
-
-The server is a **local, single-user** tool and must be bound to the loopback interface
-(``127.0.0.1``) - never to ``0.0.0.0``. Binding is done by the runner (``uvicorn`` via
-``scripts/tasks.py run``), whose default host is ``127.0.0.1``.
-
-Startup never requires a feature secret: the health check resolves only ``DATABASE_URL``
-(see :func:`resova.config.settings.get_database_url`), so a fresh clone can run the API
-before any credential exists.
+The API is local and single-user only, bound to 127.0.0.1.
+Exposes:
+- ``GET /health``: reports service status, version, and database connectivity.
+- Lifespan management: manages engine lifecycle and poller scheduler.
 """
 
 from __future__ import annotations
@@ -26,12 +19,12 @@ from sqlalchemy import Engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from resova import __version__
-from resova.config.settings import get_database_url
+from resova.config.settings import get_database_url, get_settings
 from resova.db.session import create_db_engine
+from resova.scheduler.poller import PollerScheduler
 
 logger = logging.getLogger(__name__)
 
-#: The only host the API may ever be bound to.
 ALLOWED_HOST = "127.0.0.1"
 
 
@@ -57,27 +50,28 @@ def _database_reachable(engine: Engine) -> bool:
 
 
 def create_app() -> FastAPI:
-    """Build the application.
-
-    Exposed as a factory so tests can build an isolated instance; module level ``app``
-    is what the ASGI server imports.
-    """
+    """Build the application factory."""
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        # Creating an engine performs no I/O and needs no credential, so the app starts
-        # even when nothing has been configured yet.
         app.state.engine = create_db_engine(get_database_url())
+        settings = get_settings()
+
+        # Start poller scheduler if enabled
+        scheduler = PollerScheduler(settings)
+        await scheduler.start()
+        app.state.scheduler = scheduler
+
         try:
             yield
         finally:
+            if hasattr(app.state, "scheduler"):
+                await app.state.scheduler.stop()
             app.state.engine.dispose()
 
     app = FastAPI(
         title="Resova",
         version=__version__,
-        # Documentation routes are disabled on purpose: the API exposes exactly one
-        # endpoint and must not grow any other surface.
         docs_url=None,
         redoc_url=None,
         openapi_url=None,

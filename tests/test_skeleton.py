@@ -1,7 +1,6 @@
-"""Smoke tests for the Phase 1 / Step 2.1 skeleton.
+"""Smoke tests for the Resova package skeleton and versioning.
 
-These tests assert packaging and stub hygiene only. No feature behaviour exists yet,
-so there is nothing else to test at this step.
+These tests assert packaging and module import hygiene.
 """
 
 from __future__ import annotations
@@ -14,11 +13,13 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# Packages that must exist now but are only implemented in a later step.
-# NOTE: resova.config (Steps 2.2 / 2.3), resova.db (Step 2.4), resova.utils (Step 2.5),
-# resova.sources (Step 2.7) and resova.api (Step 2.8) are implemented and covered by
-# their own tests, so they are no longer listed here.
-STUB_PACKAGES = [
+# Packages that are part of Resova
+PACKAGES = [
+    "resova.config",
+    "resova.db",
+    "resova.utils",
+    "resova.sources",
+    "resova.api",
     "resova.services",
     "resova.ai",
     "resova.telegram",
@@ -45,12 +46,7 @@ def test_python_requirement_is_3_12_or_newer() -> None:
     assert _pyproject()["project"]["requires-python"] == ">=3.12"
 
 
-@pytest.mark.parametrize("name", STUB_PACKAGES)
-def test_stub_package_imports(name: str) -> None:
-    assert importlib.import_module(name) is not None
-
-
-@pytest.mark.parametrize("name", STUB_PACKAGES)
-def test_stub_package_is_marked_not_implemented(name: str) -> None:
-    docstring = importlib.import_module(name).__doc__ or ""
-    assert "NOT IMPLEMENTED" in docstring
+@pytest.mark.parametrize("name", PACKAGES)
+def test_all_packages_importable(name: str) -> None:
+    module = importlib.import_module(name)
+    assert module is not None

@@ -1,11 +1,10 @@
-"""Telegram bot integration.
+"""Telegram bot integration (Phase 5).
 
-NOT IMPLEMENTED - later phase (Phase 2-6 scope).
-
-Planned content: delivering opportunities with score >= threshold to a single
-authorised user, inline buttons (Open, Details, Accept, Reject, Copy link),
-recording user actions, manual paste of project text and on-request proposal
-drafts. The system never submits proposals and never contacts clients.
+Delivers scored opportunities to a single authorised user, provides inline buttons
+for interaction, supports manual project paste, and shows proposal drafts on request.
+Never submits proposals or contacts clients.
 """
 
-__all__: list[str] = []
+from resova.telegram.bot import TelegramNotifier
+
+__all__ = ["TelegramNotifier"]

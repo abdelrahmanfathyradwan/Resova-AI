@@ -1,10 +1,10 @@
-"""Application services orchestrating sources, scoring and notifications.
+"""Application services orchestrating sources, scoring and notifications (Phase 4-6).
 
-NOT IMPLEMENTED - later phase (Phase 2-6 scope).
-
-Planned content: ingestion service (source message -> normalised project -> dedup
--> filtering), notification service (score >= threshold -> Telegram) and the
-proposal-draft service. Drafts are always reviewed and sent manually by the client.
+Services wire together the sources, AI analysis, database, and Telegram notification
+layers. Each service has a focused responsibility and clear boundaries.
 """
 
-__all__: list[str] = []
+from resova.services.ingestion import IngestionService
+from resova.services.proposal import ProposalService
+
+__all__ = ["IngestionService", "ProposalService"]

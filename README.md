@@ -30,21 +30,22 @@ Resova runs **locally**, for a single user. It never contacts a platform on its 
 - **Scope:** no web dashboard, no SaaS/multi-user, no platforms other than Mostaql/Khamsat,
   no payments. Future ideas go to [docs/FUTURE.md](docs/FUTURE.md), not into code.
 
-## Status — Phase 1 complete
+## Status — MVP Complete
 
-| Implemented | Not implemented yet |
-| --- | --- |
-| Settings + conditional secrets ([`settings.py`](src/resova/config/settings.py)) | Concrete Mostaql/Khamsat alert-email parsers — **"Not implemented - pending sample emails"** ([docs/SOURCES.md](docs/SOURCES.md)) |
-| Versioned client profile ([`profile.py`](src/resova/config/profile.py)) | IMAP ingestion — Phase 3 |
-| 9 ORM models + Alembic migrations ([`models.py`](src/resova/db/models.py)) | OpenAI scoring — Phase 4 |
-| Idempotent repository with 3-key dedup ([`repositories.py`](src/resova/db/repositories.py)) | Telegram bot + manual paste — Phase 5 |
-| Normalizer, dedup keys, errors, retry, redacting logs ([`utils/`](src/resova/utils)) | Proposal drafts — Phase 6 |
-| Source contract + unified project model ([`sources/base.py`](src/resova/sources/base.py)) | Scheduler jobs — Phase 3+ |
-| FastAPI `GET /health` on 127.0.0.1 ([`api/app.py`](src/resova/api/app.py)) | |
-
-Nothing from a later phase is implemented. Packages that are still stubs (`services`, `ai`,
-`telegram`, `scheduler`) say so in their docstring and are asserted by
-[`tests/test_skeleton.py`](tests/test_skeleton.py).
+| Module | Implementation | Status |
+| --- | --- | --- |
+| Settings & Config | Pydantic-settings with conditional secrets, validation ([`settings.py`](src/resova/config/settings.py)) | **Implemented** |
+| Client Profile | Versioned YAML profile with content hash, confirmed vs unconfirmed skills ([`profile.py`](src/resova/config/profile.py)) | **Implemented** |
+| Database & ORM | 9 SQLAlchemy models + Alembic migrations + SQLite/Postgres portability ([`models.py`](src/resova/db/models.py)) | **Implemented** |
+| Repositories | Idempotent upsert with 3-key dedup & latency reporting ([`repositories.py`](src/resova/db/repositories.py)) | **Implemented** |
+| Normalizer & Utilities | Text/URL normalizer, dedup keys, error hierarchy, backoff retry, redacting logs ([`utils/`](src/resova/utils)) | **Implemented** |
+| Opportunity Sources | BaseSource contract, ListingPoller (Mostaql/Khamsat) + EmailSource ([`sources/`](src/resova/sources)) | **Implemented** |
+| AI Analysis | OpenAI scoring 0–100, profile matching, risk assessment & keyword fallback ([`ai/`](src/resova/ai)) | **Implemented** |
+| Telegram Integration | Opportunity notifications with inline details & duplicate suppression ([`telegram/`](src/resova/telegram)) | **Implemented** |
+| Proposal Generator | Professional AR/EN draft generation, profile-grounded, manual submission only ([`services/proposal.py`](src/resova/services/proposal.py)) | **Implemented** |
+| Ingestion Service | End-to-end pipeline: discovery → dedup → AI scoring → Telegram notification ([`services/ingestion.py`](src/resova/services/ingestion.py)) | **Implemented** |
+| Scheduler | Poller scheduler integrated with FastAPI lifespan ([`scheduler/`](src/resova/scheduler)) | **Implemented** |
+| FastAPI Application | Local 127.0.0.1 health endpoint & lifespan management ([`api/app.py`](src/resova/api/app.py)) | **Implemented** |
 
 ## Requirements
 
