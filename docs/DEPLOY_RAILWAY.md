@@ -40,13 +40,14 @@
 - **Dialect Normalization:** Railway commonly provides URLs prefixed with `postgres://...`. Resova's configuration and database session layers automatically normalize `postgres://` to `postgresql://` so that SQLAlchemy 2.x and `psycopg2-binary` connect smoothly without syntax errors.
 - **Connection Health:** `pool_pre_ping=True` and connection recycling (`pool_recycle=300`) prevent dropped connections from causing HTTP 500 errors.
 
-### B. Safe Single-Run Migrations (`preDeployCommand`)
+### B. Safe Single-Run Migrations (`preDeploy`)
 - Migrations are decoupled from container startup.
-- In `railway.json`, `"preDeployCommand": "alembic upgrade head"` executes as an isolated one-off task before new container replicas start serving traffic.
+- In both `.railway/railway.ts` (`preDeploy: "alembic upgrade head"`) and `railway.json` (`preDeployCommand`), migrations execute once as an isolated pre-deploy step before any application replica starts serving traffic.
 - If a migration fails, the deployment aborts safely, protecting active traffic.
 
 ### C. Distributed Scheduler Lock (PostgreSQL Advisory Lock)
 - To prevent scheduled tasks from firing multiple times if multiple replicas or workers exist, `PollerScheduler` implements a **session-level PostgreSQL Advisory Lock** (`RESOVA_SCHEDULER_LOCK_ID = 849201948201`).
+- In addition, both `.railway/railway.ts` (`replicas: 1`) and `railway.json` (`numReplicas: 1`) enforce a single replica default.
 - Only the instance that acquires the lock acts as the **active scheduler leader**. Other replicas stand by.
 - If the active container restarts, PostgreSQL immediately releases the advisory lock, allowing a standby instance to take over leadership.
 
@@ -56,7 +57,42 @@
 
 ---
 
-## 3. Cost Analysis & Resource Requirements
+## 3. Infrastructure as Code: `.railway/railway.ts` vs `railway.json`
+
+Railway now supports **Infrastructure as Code (IaC)** using TypeScript via `.railway/railway.ts`. Resova supports both approaches:
+
+* **`.railway/railway.ts` (Modern IaC — Recommended for New Projects):**
+  Defines the complete project graph (PostgreSQL resource + Resova web service) in TypeScript.
+  ```typescript
+  import { defineRailway, postgres, project, service } from "railway/iac";
+
+  export default defineRailway((_ctx) => {
+    const db = postgres("resova-db");
+    const app = service("resova", {
+      build: { dockerfilePath: "Dockerfile" },
+      start: "uvicorn resova.api.app:app --host 0.0.0.0 --port $PORT --workers 1 ...",
+      preDeploy: "alembic upgrade head",
+      replicas: 1,
+      healthcheck: "/health",
+      healthcheckTimeout: 10,
+      restartPolicy: "ON_FAILURE",
+      restartPolicyMaxRetries: 5,
+    });
+    return project("resova", { resources: [db, app] });
+  });
+  ```
+  Manage via Railway CLI:
+  ```bash
+  railway config plan   # Preview planned infrastructure changes
+  railway config apply  # Apply configuration live to Railway
+  ```
+
+* **`railway.json` (Backward Compatibility):**
+  Preserved for repositories deploying via the legacy config format or older CLI versions. Both configurations share identical commands, single replica limits, and health checks.
+
+---
+
+## 4. Cost Analysis & Resource Requirements
 
 ### Railway Costs (Hobby Plan)
 * **Base Plan Price:** **$5.00 / month** (minimum monthly subscription).
@@ -90,7 +126,7 @@
 
 ---
 
-## 4. Production Environment Variables Reference
+## 5. Production Environment Variables Reference
 
 Configure these in Railway under **Project → Service → Variables**:
 
@@ -113,8 +149,21 @@ Configure these in Railway under **Project → Service → Variables**:
 
 ---
 
-## 5. Deployment Step-by-Step (When Ready)
+## 6. Deployment Step-by-Step (When Ready)
 
+### Option A: Using Railway CLI (Infrastructure as Code)
+```bash
+# 1. Login to Railway
+railway login
+
+# 2. Preview infrastructure plan from .railway/railway.ts
+railway config plan
+
+# 3. Apply infrastructure (provisions PostgreSQL + Resova service)
+railway config apply
+```
+
+### Option B: Using Railway Web Dashboard
 ### Step 1: Create a Private GitHub Repository
 ```bash
 # Verify working tree is clean
