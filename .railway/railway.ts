@@ -26,8 +26,6 @@ export default defineRailway(() => {
       builder: "DOCKERFILE",
       dockerfilePath: "Dockerfile",
     },
-    start:
-      "uvicorn resova.api.app:app --host 0.0.0.0 --port $PORT --workers 1 --log-level info --proxy-headers --forwarded-allow-ips '*'",
     // Decoupled pre-deploy migration: executes once before replicas boot
     preDeploy: "alembic upgrade head",
     // Strictly enforced single replica (scheduler leader safety)

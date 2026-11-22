@@ -74,8 +74,6 @@ Railway services use **Infrastructure as Code (IaC)** via TypeScript in `.railwa
         builder: "DOCKERFILE",
         dockerfilePath: "Dockerfile",
       },
-      start:
-        "uvicorn resova.api.app:app --host 0.0.0.0 --port $PORT --workers 1 --log-level info --proxy-headers --forwarded-allow-ips '*'",
       preDeploy: "alembic upgrade head",
       replicas: 1,
       healthcheck: "/health",
