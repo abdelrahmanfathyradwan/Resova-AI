@@ -1,8 +1,7 @@
 """Tests for the minimal API (Phase 1 / Step 2.8).
 
-The API must expose exactly one endpoint, ``GET /health``, and must never be bound to
-anything other than the loopback interface. A fresh clone with no configured secrets has
-to be able to start it.
+The API exposes ``GET /health`` and manages the application lifespan. A fresh clone
+with no configured secrets has to be able to start it.
 """
 
 from __future__ import annotations
@@ -15,7 +14,7 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from resova import __version__
-from resova.api import ALLOWED_HOST, HealthResponse, app, create_app
+from resova.api import HealthResponse, app, create_app
 
 
 def _client(monkeypatch: pytest.MonkeyPatch, database_url: str) -> TestClient:
@@ -43,14 +42,19 @@ class TestHealthEndpoint:
         response = client.get("/health")
 
         assert response.status_code == 200
-        assert response.json() == {
-            "status": "ok",
-            "version": __version__,
-            "database": "ok",
-        }
+        body = response.json()
+        assert body["status"] == "ok"
+        assert body["version"] == __version__
+        assert body["database"] == "ok"
+        assert "environment" in body
 
     def test_body_contains_only_the_documented_fields(self, client: TestClient) -> None:
-        assert set(client.get("/health").json()) == {"status", "version", "database"}
+        assert set(client.get("/health").json()) == {
+            "status",
+            "version",
+            "database",
+            "environment",
+        }
 
     def test_reports_degraded_and_503_when_the_database_is_unreachable(
         self, broken_client: TestClient
@@ -58,11 +62,10 @@ class TestHealthEndpoint:
         response = broken_client.get("/health")
 
         assert response.status_code == 503
-        assert response.json() == {
-            "status": "degraded",
-            "version": __version__,
-            "database": "unavailable",
-        }
+        body = response.json()
+        assert body["status"] == "degraded"
+        assert body["version"] == __version__
+        assert body["database"] == "unavailable"
 
     def test_leaks_no_secret_or_client_data(self, client: TestClient) -> None:
         body = client.get("/health").text.lower()
@@ -80,10 +83,14 @@ class TestSurface:
         assert [route.path for route in routes] == ["/health"]
         assert routes[0].methods == {"GET"}
 
-    def test_documentation_routes_are_disabled(self) -> None:
-        paths = {route.path for route in create_app().routes}
-
-        assert paths.isdisjoint({"/docs", "/redoc", "/openapi.json"})
+    def test_docs_available_in_development(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """In dev mode (default), /docs should be accessible."""
+        monkeypatch.setenv("APP_ENV", "development")
+        with _client(monkeypatch, f"sqlite:///{(tmp_path / 'dev.db').as_posix()}") as c:
+            paths = {route.path for route in c.app.routes}
+            assert "/docs" in paths
 
     def test_module_level_asgi_app_is_configured(self) -> None:
         assert app.title == "Resova"
@@ -93,10 +100,7 @@ class TestSurface:
         assert HealthResponse.model_config["extra"] == "forbid"
 
 
-class TestBinding:
-    def test_only_loopback_is_permitted(self) -> None:
-        assert ALLOWED_HOST == "127.0.0.1"
-
+class TestStartup:
     def test_starts_without_any_feature_secret(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

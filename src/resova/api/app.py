@@ -1,9 +1,11 @@
 """FastAPI application (Phase 1 / Step 2.8).
 
-The API is local and single-user only, bound to 127.0.0.1.
 Exposes:
 - ``GET /health``: reports service status, version, and database connectivity.
 - Lifespan management: manages engine lifecycle and poller scheduler.
+
+In production (``APP_ENV=production``) the API binds to ``0.0.0.0`` and disables
+interactive docs. Locally it binds to ``127.0.0.1``.
 """
 
 from __future__ import annotations
@@ -25,8 +27,6 @@ from resova.scheduler.poller import PollerScheduler
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_HOST = "127.0.0.1"
-
 
 class HealthResponse(BaseModel):
     """Body of ``GET /health``. Contains no secret and no client data."""
@@ -36,6 +36,7 @@ class HealthResponse(BaseModel):
     status: Literal["ok", "degraded"]
     version: str
     database: Literal["ok", "unavailable"]
+    environment: str
 
 
 def _database_reachable(engine: Engine) -> bool:
@@ -56,11 +57,19 @@ def create_app() -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.engine = create_db_engine(get_database_url())
         settings = get_settings()
+        app.state.settings = settings
 
         # Start poller scheduler if enabled
         scheduler = PollerScheduler(settings)
         await scheduler.start()
         app.state.scheduler = scheduler
+
+        logger.info(
+            "Resova %s started (env=%s, db=%s)",
+            __version__,
+            settings.app_env,
+            "postgresql" if "postgresql" in settings.database_url else "sqlite",
+        )
 
         try:
             yield
@@ -68,13 +77,17 @@ def create_app() -> FastAPI:
             if hasattr(app.state, "scheduler"):
                 await app.state.scheduler.stop()
             app.state.engine.dispose()
+            logger.info("Resova shutdown complete.")
+
+    settings = get_settings()
+    is_production = settings.app_env == "production"
 
     app = FastAPI(
         title="Resova",
         version=__version__,
-        docs_url=None,
+        docs_url=None if is_production else "/docs",
         redoc_url=None,
-        openapi_url=None,
+        openapi_url=None if is_production else "/openapi.json",
         lifespan=lifespan,
     )
 
@@ -88,6 +101,7 @@ def create_app() -> FastAPI:
             status="ok" if database_ok else "degraded",
             version=__version__,
             database="ok" if database_ok else "unavailable",
+            environment=settings.app_env,
         )
 
     return app

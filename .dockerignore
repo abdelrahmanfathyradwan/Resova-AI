@@ -1,0 +1,36 @@
+# ── .dockerignore ──
+# Keep the build context small and exclude secrets.
+
+.env
+.env.*
+!.env.example
+
+.venv/
+__pycache__/
+*.py[cod]
+
+*.db
+*.db-wal
+*.db-shm
+*.sqlite*
+
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+logs/
+*.log
+
+build/
+dist/
+*.egg-info/
+
+.git/
+.gitignore
+
+tests/
+docs/
+scripts/
+*.md
+!README.md
