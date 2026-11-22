@@ -1,0 +1,7 @@
+{
+  "type": "module",
+  "devDependencies": {
+    "@railway/cli": "^5.75.0",
+    "railway": "^3.17.0"
+  }
+}

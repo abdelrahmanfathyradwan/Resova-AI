@@ -27,6 +27,10 @@ htmlcov/
 logs/
 *.log
 
+# --- Node modules (Railway IaC tooling) ---
+node_modules/
+package-lock.json
+
 # --- Build artifacts / editable install metadata ---
 build/
 dist/

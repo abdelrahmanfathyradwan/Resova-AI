@@ -20,6 +20,10 @@ __pycache__/
 htmlcov/
 .coverage
 
+node_modules/
+package.json
+package-lock.json
+
 logs/
 *.log
 
