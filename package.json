@@ -1,5 +1,10 @@
 {
   "type": "module",
+  "scripts": {
+    "railway": "node scripts/railway-run.js",
+    "plan": "node scripts/railway-run.js config plan",
+    "apply": "node scripts/railway-run.js config apply"
+  },
   "devDependencies": {
     "@railway/cli": "^5.75.0",
     "railway": "^3.17.0"

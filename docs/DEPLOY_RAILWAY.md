@@ -102,10 +102,10 @@ Railway services use **Infrastructure as Code (IaC)** via TypeScript in `.railwa
     });
   });
   ```
-  Manage via Railway CLI:
+  Manage via Railway CLI / npm scripts:
   ```bash
-  railway config plan   # Preview planned infrastructure changes
-  railway config apply  # Apply configuration live to Railway
+  npm run plan   # Or: railway config plan (preview planned infrastructure changes)
+  npm run apply  # Or: railway config apply (apply configuration live to Railway)
   ```
 
 ---
