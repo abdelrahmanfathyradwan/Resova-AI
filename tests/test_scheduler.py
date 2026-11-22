@@ -106,6 +106,44 @@ def test_scheduler_postgresql_leader_lock_acquired() -> None:
     mock_conn.close.assert_called_once()
 
 
+def test_scheduler_postgresql_lock_lifecycle_retains_connection_and_releases() -> None:
+    """The scheduler keeps the same DB connection throughout leadership and releases on stop."""
+    mock_engine = MagicMock()
+    mock_engine.dialect.name = "postgresql"
+    mock_conn = MagicMock()
+    mock_conn.closed = False
+    mock_conn.execute.return_value.scalar.return_value = True
+    mock_engine.connect.return_value = mock_conn
+
+    scheduler = PollerScheduler(
+        Settings(
+            _env_file=None,
+            enable_email_ingestion=False,
+            enable_ai_analysis=False,
+            enable_telegram=False,
+        ),
+        engine=mock_engine,
+    )
+
+    # 1. Acquire leadership
+    acquired = scheduler._try_acquire_leader_lock()
+    assert acquired is True
+    assert scheduler._lock_conn is mock_conn
+    assert mock_conn.close.call_count == 0
+
+    # 2. Verify lock retention over multiple poll checks (uses the same connection)
+    assert scheduler._verify_leader_lock() is True
+    assert scheduler._verify_leader_lock() is True
+    assert scheduler._lock_conn is mock_conn
+    assert mock_conn.close.call_count == 0
+
+    # 3. Release on shutdown
+    scheduler._release_leader_lock()
+    assert scheduler._lock_conn is None
+    assert scheduler.is_leader is False
+    assert mock_conn.close.call_count == 1
+
+
 def test_scheduler_postgresql_standby_when_lock_not_acquired() -> None:
     """PostgreSQL dialect stands by when another replica holds the advisory lock."""
     mock_engine = MagicMock()
