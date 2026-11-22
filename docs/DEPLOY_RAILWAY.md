@@ -57,28 +57,49 @@
 
 ---
 
-## 3. Infrastructure as Code: `.railway/railway.ts` vs `railway.json`
+## 3. Infrastructure as Code: `.railway/railway.ts` (Single Source of Truth)
 
-Railway now supports **Infrastructure as Code (IaC)** using TypeScript via `.railway/railway.ts`. Resova supports both approaches:
+Railway services use **Infrastructure as Code (IaC)** via TypeScript in `.railway/railway.ts`. Legacy `railway.json` has been decommissioned to avoid dual-configuration conflicts.
 
-* **`.railway/railway.ts` (Modern IaC — Recommended for New Projects):**
-  Defines the complete project graph (PostgreSQL resource + Resova web service) in TypeScript.
+* **Project Graph in `.railway/railway.ts`:**
+  Defines the complete project graph (PostgreSQL resource + Resova web service) with dynamic private network binding:
   ```typescript
   import { defineRailway, postgres, project, service } from "railway/iac";
 
-  export default defineRailway((_ctx) => {
+  export default defineRailway(() => {
     const db = postgres("resova-db");
+
     const app = service("resova", {
-      build: { dockerfilePath: "Dockerfile" },
-      start: "uvicorn resova.api.app:app --host 0.0.0.0 --port $PORT --workers 1 ...",
+      build: {
+        builder: "DOCKERFILE",
+        dockerfilePath: "Dockerfile",
+      },
+      start:
+        "uvicorn resova.api.app:app --host 0.0.0.0 --port $PORT --workers 1 --log-level info --proxy-headers --forwarded-allow-ips '*'",
       preDeploy: "alembic upgrade head",
       replicas: 1,
       healthcheck: "/health",
       healthcheckTimeout: 10,
       restartPolicy: "ON_FAILURE",
       restartPolicyMaxRetries: 5,
+      env: {
+        APP_ENV: "production",
+        LOG_LEVEL: "INFO",
+        DATABASE_URL: db.env.DATABASE_URL, // Dynamic private networking URL
+        PROFILE_PATH: "config/profile.yaml",
+        ENABLE_AI_ANALYSIS: "true",
+        OPENAI_MODEL: "gpt-4o-mini",
+        DAILY_AI_ANALYSIS_LIMIT: "100",
+        ENABLE_TELEGRAM: "true",
+        ENABLE_EMAIL_INGESTION: "false",
+        ENABLE_LISTING_POLLER: "false",
+        LISTING_POLLER_ACK: "false",
+      },
     });
-    return project("resova", { resources: [db, app] });
+
+    return project("resova", {
+      resources: [db, app],
+    });
   });
   ```
   Manage via Railway CLI:
@@ -86,9 +107,6 @@ Railway now supports **Infrastructure as Code (IaC)** using TypeScript via `.rai
   railway config plan   # Preview planned infrastructure changes
   railway config apply  # Apply configuration live to Railway
   ```
-
-* **`railway.json` (Backward Compatibility):**
-  Preserved for repositories deploying via the legacy config format or older CLI versions. Both configurations share identical commands, single replica limits, and health checks.
 
 ---
 
