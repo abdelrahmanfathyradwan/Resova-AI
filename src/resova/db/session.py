@@ -15,12 +15,23 @@ from typing import Any
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
+from resova.config.settings import normalize_database_url
 from resova.db.base import Base
 
 
 def create_db_engine(database_url: str, *, echo: bool = False) -> Engine:
-    """Create an engine, applying SQLite tuning only when the dialect is SQLite."""
-    engine = create_engine(database_url, echo=echo, future=True)
+    """Create an engine, applying SQLite tuning or PostgreSQL pooling as appropriate."""
+    url = normalize_database_url(database_url)
+    is_sqlite = url.startswith("sqlite")
+    kwargs: dict[str, Any] = {
+        "echo": echo,
+        "future": True,
+    }
+    if not is_sqlite:
+        kwargs["pool_pre_ping"] = True
+        kwargs["pool_recycle"] = 300
+
+    engine = create_engine(url, **kwargs)
 
     if engine.dialect.name == "sqlite":
 

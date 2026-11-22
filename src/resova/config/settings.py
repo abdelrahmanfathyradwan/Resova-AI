@@ -26,6 +26,17 @@ SECRET_FIELDS: tuple[str, ...] = (
 )
 
 
+def normalize_database_url(url: str) -> str:
+    """Normalize database URL for SQLAlchemy compatibility.
+
+    Railway, Heroku, and other PaaS providers frequently export ``postgres://...``
+    which SQLAlchemy 1.4+ rejects in favor of ``postgresql://...``.
+    """
+    if url.startswith("postgres://"):
+        return "postgresql://" + url[len("postgres://") :]
+    return url
+
+
 def _is_blank(secret: SecretStr | None) -> bool:
     """Return ``True`` when a secret is missing or whitespace-only."""
     return secret is None or not secret.get_secret_value().strip()
@@ -52,6 +63,13 @@ class Settings(BaseSettings):
 
     # --- Database ---
     database_url: str = "sqlite:///./resova.db"
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _normalize_db_url(cls, v: object) -> str:
+        if isinstance(v, str):
+            return normalize_database_url(v)
+        return str(v)
 
     # --- Client profile ---
     profile_path: Path = Path("config/profile.yaml")
@@ -199,7 +217,14 @@ class _DatabaseOnly(BaseSettings):
 
     database_url: str = "sqlite:///./resova.db"
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _normalize_db_url(cls, v: object) -> str:
+        if isinstance(v, str):
+            return normalize_database_url(v)
+        return str(v)
+
 
 def get_database_url() -> str:
     """Resolve only the database URL, without validating feature secrets."""
-    return _DatabaseOnly().database_url
+    return normalize_database_url(_DatabaseOnly().database_url)

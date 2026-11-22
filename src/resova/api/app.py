@@ -21,11 +21,14 @@ from sqlalchemy import Engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from resova import __version__
-from resova.config.settings import get_database_url, get_settings
+from resova.config.settings import Settings, get_settings
 from resova.db.session import create_db_engine
 from resova.scheduler.poller import PollerScheduler
 
 logger = logging.getLogger(__name__)
+
+#: Default local bind host (Phase 1 / Step 2.8).
+ALLOWED_HOST = "127.0.0.1"
 
 
 class HealthResponse(BaseModel):
@@ -50,25 +53,26 @@ def _database_reachable(engine: Engine) -> bool:
     return True
 
 
-def create_app() -> FastAPI:
+def create_app(settings: Settings | None = None) -> FastAPI:
     """Build the application factory."""
+
+    app_settings = settings or get_settings()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        app.state.engine = create_db_engine(get_database_url())
-        settings = get_settings()
-        app.state.settings = settings
+        app.state.engine = create_db_engine(app_settings.database_url)
+        app.state.settings = app_settings
 
         # Start poller scheduler if enabled
-        scheduler = PollerScheduler(settings)
+        scheduler = PollerScheduler(app_settings, engine=app.state.engine)
         await scheduler.start()
         app.state.scheduler = scheduler
 
         logger.info(
             "Resova %s started (env=%s, db=%s)",
             __version__,
-            settings.app_env,
-            "postgresql" if "postgresql" in settings.database_url else "sqlite",
+            app_settings.app_env,
+            "postgresql" if "postgresql" in app_settings.database_url else "sqlite",
         )
 
         try:
@@ -79,8 +83,7 @@ def create_app() -> FastAPI:
             app.state.engine.dispose()
             logger.info("Resova shutdown complete.")
 
-    settings = get_settings()
-    is_production = settings.app_env == "production"
+    is_production = app_settings.app_env == "production"
 
     app = FastAPI(
         title="Resova",
@@ -101,7 +104,7 @@ def create_app() -> FastAPI:
             status="ok" if database_ok else "degraded",
             version=__version__,
             database="ok" if database_ok else "unavailable",
-            environment=settings.app_env,
+            environment=app_settings.app_env,
         )
 
     return app

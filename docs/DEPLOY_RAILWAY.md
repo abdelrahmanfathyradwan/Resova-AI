@@ -1,206 +1,146 @@
-# Resova — Railway Deployment Guide
+# Resova — Railway Production Deployment Guide
 
 > [!IMPORTANT]
-> This guide prepares everything for Railway deployment. No actual deployment
-> or account creation is required — follow the steps when you are ready to go live.
+> This guide outlines everything prepared for production deployment on Railway.
+> No accounts have been created and no fees have been charged. Follow these instructions when you are ready to deploy.
 
-## Architecture on Railway
+---
+
+## 1. System Architecture on Railway
 
 ```
-┌──────────────────────────────────────────────┐
-│                   Railway                     │
-│                                               │
-│  ┌─────────────────────┐  ┌───────────────┐  │
-│  │  resova (Service)    │  │  PostgreSQL   │  │
-│  │  FastAPI + Scheduler │──│  (Plugin)     │  │
-│  │  1 worker            │  │  Managed DB   │  │
-│  └─────────────────────┘  └───────────────┘  │
-│       │                                       │
-│       │ Health: GET /health                   │
-│       │ PORT injected by Railway              │
-└───────│───────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────┐
+│                      Railway Project                      │
+│                                                           │
+│  ┌──────────────────────────┐     ┌────────────────────┐  │
+│  │      resova (Web)        │     │  PostgreSQL Plugin │  │
+│  │   FastAPI + Uvicorn      │────▶│    (Managed DB)    │  │
+│  │   + PollerScheduler      │     │  Automated Backups │  │
+│  │   (Replicas: 1 default)  │     │  SSL Connections   │  │
+│  └──────────────────────────┘     └────────────────────┘  │
+│       │               ▲                                   │
+│       │               │ preDeployCommand:                 │
+│       │               │ alembic upgrade head              │
+│       │               │ (runs once before instances boot) │
+│       │                                                   │
+│       │ Health Check Probe:                               │
+│       │ GET /health -> {"status": "ok", ...}              │
+└───────┼───────────────────────────────────────────────────┘
         │
-   Telegram Bot API  ←→  Owner's Telegram
-   OpenAI API        ←→  gpt-4o-mini
-```
-
-### Why PostgreSQL (not SQLite)?
-
-Railway containers are **ephemeral** — redeployments replace the filesystem.
-While Railway supports persistent volumes, managed PostgreSQL is:
-
-- More reliable (automated backups, no corruption risk on container restart).
-- Required for future multi-worker scaling.
-- Already supported by Resova — `DATABASE_URL` is the only change needed.
-
-### Why 1 worker?
-
-Resova runs an **in-process asyncio scheduler** (`PollerScheduler`). Multiple
-uvicorn workers would spawn duplicate schedulers. Use `--workers 1` to guarantee
-exactly one scheduler instance. This is sufficient for a single-user agent.
-
----
-
-## Prerequisites
-
-1. A [Railway account](https://railway.app/) (Hobby plan: $5/month).
-2. A private GitHub repository containing the Resova code.
-3. The following secrets ready (never commit them):
-   - OpenAI API key
-   - Telegram bot token
-   - Telegram user ID
-
----
-
-## Step 1: Create the Railway Project
-
-1. Log in to [railway.app](https://railway.app/).
-2. Click **New Project → Deploy from GitHub repo**.
-3. Select your private `resova` repository.
-4. Railway detects the `Dockerfile` automatically.
-
-## Step 2: Add PostgreSQL
-
-1. In the Railway project dashboard, click **+ New → Database → PostgreSQL**.
-2. Railway creates a managed PostgreSQL instance and injects `DATABASE_URL`
-   automatically as a service variable.
-3. Verify the variable name is `DATABASE_URL` (Railway's default). If Railway
-   names it differently (e.g., `POSTGRESQL_URL`), create a reference variable:
-   ```
-   DATABASE_URL = ${{Postgres.DATABASE_URL}}
-   ```
-
-## Step 3: Set Environment Variables
-
-In the Railway service settings → **Variables**, add:
-
-| Variable | Value | Required |
-|---|---|---|
-| `APP_ENV` | `production` | ✓ |
-| `LOG_LEVEL` | `INFO` | ✓ |
-| `DATABASE_URL` | *(auto-injected by PostgreSQL plugin)* | ✓ |
-| `PROFILE_PATH` | `config/profile.yaml` | ✓ |
-| `ENABLE_EMAIL_INGESTION` | `false` | ✓ |
-| `ENABLE_LISTING_POLLER` | `false` | ✓ |
-| `ENABLE_AI_ANALYSIS` | `true` | ✓ |
-| `OPENAI_API_KEY` | `sk-proj-...` | ✓ |
-| `OPENAI_MODEL` | `gpt-4o-mini` | ✓ |
-| `DAILY_AI_ANALYSIS_LIMIT` | `100` | ✓ |
-| `ENABLE_TELEGRAM` | `true` | ✓ |
-| `TELEGRAM_BOT_TOKEN` | `8982618527:AAH...` | ✓ |
-| `TELEGRAM_ALLOWED_USER_ID` | `5975310413` | ✓ |
-
-> [!CAUTION]
-> Never set `ENABLE_LISTING_POLLER=true` or `LISTING_POLLER_ACK=true` in
-> production without explicit approval. The poller sends HTTP requests to
-> external platforms.
-
-## Step 4: Configure Health Check
-
-In **Settings → Deploy**:
-
-- **Health Check Path:** `/health`
-- **Health Check Timeout:** 10 seconds
-
-Railway uses this to verify the service is healthy after each deployment.
-The endpoint returns `{"status": "ok", ...}` with HTTP 200, or
-`{"status": "degraded", ...}` with HTTP 503 if the database is unreachable.
-
-## Step 5: Deploy
-
-1. Push to the connected GitHub branch (default: `main`).
-2. Railway builds the Docker image and deploys automatically.
-3. The startup command runs `alembic upgrade head` before starting uvicorn,
-   so the database schema is always up to date.
-4. Check the deployment log for: `Resova 0.1.0 started (env=production, db=postgresql)`.
-
-## Step 6: Verify
-
-```bash
-curl https://your-app.up.railway.app/health
-# Expected: {"status":"ok","version":"0.1.0","database":"ok","environment":"production"}
+        ├──▶ Telegram Bot API ──▶ Freelancer's Telegram (User ID)
+        └──▶ OpenAI API (gpt-4o-mini) ──▶ Opportunity Evaluation
 ```
 
 ---
 
-## Cost Estimate
+## 2. Key Production Safeguards
 
-### Railway Hobby Plan — $5/month
+### A. Database & URL Normalization
+- **Managed PostgreSQL:** Provides persistent storage with automatic daily backups and SSL encryption.
+- **Dialect Normalization:** Railway commonly provides URLs prefixed with `postgres://...`. Resova's configuration and database session layers automatically normalize `postgres://` to `postgresql://` so that SQLAlchemy 2.x and `psycopg2-binary` connect smoothly without syntax errors.
+- **Connection Health:** `pool_pre_ping=True` and connection recycling (`pool_recycle=300`) prevent dropped connections from causing HTTP 500 errors.
 
-Resova is a lightweight single-user agent. Expected resource consumption:
+### B. Safe Single-Run Migrations (`preDeployCommand`)
+- Migrations are decoupled from container startup.
+- In `railway.json`, `"preDeployCommand": "alembic upgrade head"` executes as an isolated one-off task before new container replicas start serving traffic.
+- If a migration fails, the deployment aborts safely, protecting active traffic.
 
-| Resource | Estimated Usage | Monthly Cost |
-|---|---|---|
-| **CPU** | ~0.1 vCPU average (idle + periodic polls) | ~$2.00 |
-| **Memory** | ~128–256 MB (FastAPI + SQLAlchemy) | ~$1.30–$2.60 |
-| **PostgreSQL** | <100 MB storage | ~$0.02 |
-| **Network** | <1 GB egress | ~$0.05 |
-| **Total** | | **~$3.40–$4.70** |
+### C. Distributed Scheduler Lock (PostgreSQL Advisory Lock)
+- To prevent scheduled tasks from firing multiple times if multiple replicas or workers exist, `PollerScheduler` implements a **session-level PostgreSQL Advisory Lock** (`RESOVA_SCHEDULER_LOCK_ID = 849201948201`).
+- Only the instance that acquires the lock acts as the **active scheduler leader**. Other replicas stand by.
+- If the active container restarts, PostgreSQL immediately releases the advisory lock, allowing a standby instance to take over leadership.
 
-The $5 subscription includes $5 of usage credit, so **Resova should run
-within the included credit** most months. Expected monthly bill: **$5 flat**.
-
-### External API Costs (not Railway)
-
-| Service | Estimated Usage | Cost |
-|---|---|---|
-| **OpenAI (gpt-4o-mini)** | ~100 analyses/day × ~1K tokens | ~$0.30/day ≈ $9/month |
-| **Telegram Bot API** | Free | $0 |
+### D. Zero-Data Scraping & Listing Poller Disabled
+- `ENABLE_LISTING_POLLER=false` and `LISTING_POLLER_ACK=false` are enforced in production settings.
+- No public scraping or automatic proposal submission can occur.
 
 ---
 
-## GitHub Private Repository Setup
+## 3. Cost Analysis & Resource Requirements
 
-1. Create a private repository on GitHub (e.g., `yourusername/resova`).
-2. Add Railway's GitHub App with access to this repository only.
-3. In Railway, connect the repository and select the branch to deploy from.
+### Railway Costs (Hobby Plan)
+* **Base Plan Price:** **$5.00 / month** (minimum monthly subscription).
+* **Included Credits:** Includes **$5.00 of usage credit** per month.
+* **Estimated Metered Consumption:**
+  * **Application Container:** 1 instance @ ~0.1 vCPU average (~$2.00/mo) and ~200MB RAM (~$2.00/mo).
+  * **PostgreSQL Storage:** < 100 MB (~$0.02/mo).
+  * **Egress Bandwidth:** < 1 GB (~$0.05/mo).
+  * **Estimated Usage:** ~$4.07 / month.
+* **Net Railway Bill:** Since usage is within the $5.00 credit, the expected charge is the flat **$5.00 / month**.
 
-### Pushing Local Code
+### OpenAI API Costs (`gpt-4o-mini`)
+* **Pricing Rates:** $0.15 per 1M input tokens, $0.60 per 1M output tokens.
+* **Token Assumptions per Opportunity Analysis:**
+  * **Input:** ~800 tokens (project title, description, skills from client profile).
+  * **Output:** ~250 tokens (structured JSON evaluation with score, band, rationale).
+  * **Cost per Analysis:** `(800 × $0.00000015) + (250 × $0.00000060) ≈ $0.00027` (less than 3 hundredths of a cent).
+* **Monthly Estimates:**
+  * At 30 opportunities/day (~900/month): **~$0.24 / month**.
+  * At max limit of 100 opportunities/day (~3,000/month): **~$0.81 / month**.
+* **Proposal Draft Generation (Optional):** Only generated for high matches (~5/day @ ~1,200 tokens) adds **~$0.15 / month**.
+* **Total Expected OpenAI Bill:** **~$0.50 – $1.20 / month**.
 
+### Summary of Total Monthly Cost
+| Service | Expected Monthly Cost |
+|---|---|
+| **Railway (Hobby Plan)** | $5.00 (flat) |
+| **OpenAI API (gpt-4o-mini)** | ~$0.80 |
+| **Telegram Bot API** | $0.00 (free) |
+| **Total Estimated Operating Cost** | **~$5.80 / month** |
+
+---
+
+## 4. Production Environment Variables Reference
+
+Configure these in Railway under **Project → Service → Variables**:
+
+| Variable | Recommended Production Value | Required | Notes |
+|---|---|---|---|
+| `APP_ENV` | `production` | Yes | Disables public `/docs` and enables production optimizations |
+| `LOG_LEVEL` | `INFO` | Yes | Redacted logging |
+| `DATABASE_URL` | *(Injected by Railway)* | Yes | Railway PostgreSQL plugin provides this |
+| `PROFILE_PATH` | `config/profile.yaml` | Yes | Bundled in container |
+| `ENABLE_AI_ANALYSIS` | `true` | Yes | Evaluates matches with OpenAI |
+| `OPENAI_API_KEY` | `sk-proj-...` | Yes | **Secret** (Your OpenAI API Key) |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Yes | Standard cost-effective model |
+| `DAILY_AI_ANALYSIS_LIMIT` | `100` | Yes | Daily budget guardrail |
+| `ENABLE_TELEGRAM` | `true` | Yes | Sends instant alerts |
+| `TELEGRAM_BOT_TOKEN` | `8982618527:AAH...` | Yes | **Secret** (Bot token from @BotFather) |
+| `TELEGRAM_ALLOWED_USER_ID` | `5975310413` | Yes | **Secret** (Single user security ID) |
+| `ENABLE_EMAIL_INGESTION` | `false` | Yes | Kept disabled until mailbox is set up |
+| `ENABLE_LISTING_POLLER` | `false` | Yes | **Must be false** |
+| `LISTING_POLLER_ACK` | `false` | Yes | **Must be false** |
+
+---
+
+## 5. Deployment Step-by-Step (When Ready)
+
+### Step 1: Create a Private GitHub Repository
 ```bash
-# From C:\dev\resova
-git remote add origin https://github.com/yourusername/resova.git
+# Verify working tree is clean
+git status
+
+# Add your private remote and push
+git remote add origin https://github.com/<your-username>/resova.git
+git branch -M main
 git push -u origin main
 ```
+> [!NOTE]
+> `.env` is listed in `.gitignore` and `.dockerignore`. It will never be committed or included in Docker builds.
 
-> [!WARNING]
-> Ensure `.env` is in `.gitignore` (it already is). Never push secrets to GitHub.
+### Step 2: Deploy to Railway
+1. Sign in to [Railway](https://railway.app/).
+2. Select **+ New Project → Deploy from GitHub repo**.
+3. Choose your private `resova` repository.
+4. Click **+ New → Database → PostgreSQL** to add the managed database.
+5. In the `resova` service settings:
+   - Under **Variables**, add the environment variables listed in Section 4.
+   - Verify `DATABASE_URL` points to the attached PostgreSQL plugin.
+6. Trigger deployment: Railway will run `alembic upgrade head`, start the container, and verify `/health`.
 
----
-
-## Files Created for Deployment
-
-| File | Purpose |
-|---|---|
-| `Dockerfile` | Multi-stage Docker build (builder + runtime) |
-| `.dockerignore` | Excludes secrets, tests, and dev files from the Docker context |
-| `railway.json` | Railway service configuration (health check, restart policy) |
-| `docs/DEPLOY_RAILWAY.md` | This deployment guide |
-
-## Remaining Manual Steps
-
-1. ☐ Create a Railway account and Hobby plan ($5/month).
-2. ☐ Create a private GitHub repository and push the code.
-3. ☐ Connect the repository to Railway.
-4. ☐ Add the PostgreSQL plugin.
-5. ☐ Set the environment variables listed above.
-6. ☐ Deploy and verify with `curl /health`.
-
----
-
-## Troubleshooting
-
-### Alembic migration fails
-If the database schema is out of sync, check the Railway deploy logs.
-Common fix: ensure `DATABASE_URL` points to the PostgreSQL instance.
-
-### Health check returns 503
-The database is unreachable. Verify the PostgreSQL plugin is running and
-`DATABASE_URL` is correctly injected.
-
-### Scheduler runs duplicate tasks
-This cannot happen with `--workers 1`. If you scale to multiple workers in
-the future, extract the scheduler into a separate Railway service.
-
-### Container runs out of memory
-Increase the memory limit in Railway settings. Resova typically uses <256 MB.
+### Step 3: Verify the Live Service
+```bash
+curl https://<your-railway-domain>.up.railway.app/health
+# Expected JSON response:
+# {"status":"ok","version":"0.1.0","database":"ok","environment":"production"}
+```

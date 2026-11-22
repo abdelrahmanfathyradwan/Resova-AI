@@ -14,11 +14,17 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from resova import __version__
-from resova.api import HealthResponse, app, create_app
+from resova.api import ALLOWED_HOST, HealthResponse, app, create_app
 
 
-def _client(monkeypatch: pytest.MonkeyPatch, database_url: str) -> TestClient:
+def _client(
+    monkeypatch: pytest.MonkeyPatch, database_url: str, app_env: str = "development"
+) -> TestClient:
     monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("APP_ENV", app_env)
+    from resova.config.settings import get_settings
+
+    get_settings.cache_clear()
     return TestClient(create_app())
 
 
@@ -83,6 +89,16 @@ class TestSurface:
         assert [route.path for route in routes] == ["/health"]
         assert routes[0].methods == {"GET"}
 
+    def test_documentation_routes_are_disabled_in_production(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """In production mode, /docs and OpenAPI schemas must be disabled."""
+        with _client(
+            monkeypatch, f"sqlite:///{(tmp_path / 'prod.db').as_posix()}", app_env="production"
+        ) as c:
+            paths = {route.path for route in c.app.routes}
+            assert paths.isdisjoint({"/docs", "/redoc", "/openapi.json"})
+
     def test_docs_available_in_development(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -98,6 +114,11 @@ class TestSurface:
 
     def test_health_response_model_forbids_extra_fields(self) -> None:
         assert HealthResponse.model_config["extra"] == "forbid"
+
+
+class TestBinding:
+    def test_only_loopback_is_permitted(self) -> None:
+        assert ALLOWED_HOST == "127.0.0.1"
 
 
 class TestStartup:
