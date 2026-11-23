@@ -109,6 +109,7 @@ class TelegramUserManager:
         handlers = {
             "/start": self._cmd_start,
             "/help": self._cmd_help,
+            "/status": self._cmd_status,
             "/users": self._cmd_users,
             "/pending": self._cmd_pending,
             "/admins": self._cmd_admins,
@@ -150,6 +151,7 @@ class TelegramUserManager:
                 f"👑 *مرحباً بك يا مالك النظام ({first_name}) في Resova AI!*\n\n"
                 "أنت المالك المخول بإدارة المستخدمين وتلقي إشعارات الفرص المباشرة والملخصات.\n\n"
                 "📋 *أوامر الإدارة المتاحة:*\n"
+                "• /status — فحص حالة النظام والخدمات\n"
                 "• /users — عرض جميع المستخدمين وحالاتهم\n"
                 "• /pending — عرض طلبات الانضمام المعلقة\n"
                 "• /admins — عرض المشرفين\n"
@@ -233,12 +235,61 @@ class TelegramUserManager:
             msg = (
                 "🤖 *أوامر Resova AI المتاحة:*\n\n"
                 "• /start — التحقق من حالة حسابك\n"
+                "• /status — فحص حالة حسابك والنظام\n"
                 "• /help — عرض هذه المساعدة\n"
                 "• /admins — عرض مسؤولي النظام"
             )
             self._notifier.send_text(chat_id=chat_id, text=msg)
             return {"status": "help_sent"}
         return {"status": "unauthorized"}
+
+    def _cmd_status(
+        self, chat_id: int, username: str | None, first_name: str, args: list[str]
+    ) -> dict[str, Any]:
+        """Display operational status for owner/admin or account status for regular users."""
+        if not self.is_active_user(chat_id):
+            user = self._repo.get_by_chat_id(chat_id)
+            if user and user.status == TelegramUserStatus.pending:
+                msg = "⏳ حسابك قيد المراجعة حالياً من قبل مالك النظام."
+            else:
+                msg = "❌ ليس لديك صلاحية للوصول إلى هذا البوت."
+            self._notifier.send_text(chat_id=chat_id, text=msg)
+            return {"status": "unauthorized"}
+
+        if self.is_owner(chat_id) or self.is_admin(chat_id):
+            active_count = len(self._repo.list_users(status=TelegramUserStatus.active))
+            pending_count = len(self._repo.list_users(status=TelegramUserStatus.pending))
+            env_name = self._settings.app_env
+            poller_status = "🟢 نشط" if self._settings.enable_listing_poller else "⚪ معطل"
+            ai_status = (
+                f"🟢 مفعل ({self._settings.openai_model})"
+                if self._settings.enable_ai_analysis
+                else "⚪ معطل"
+            )
+            role_title = "👑 المالك (Owner)" if self.is_owner(chat_id) else "🛡️ مشرف (Admin)"
+
+            text = (
+                "📊 *لوحة حالة نظام Resova AI:*\n\n"
+                f"• *بيئة التشغيل:* `{env_name}`\n"
+                "• *قاعدة البيانات:* 🟢 متصلة وجاهزة\n"
+                f"• *جلب الفرص (Poller):* {poller_status}\n"
+                f"• *تحليل الذكاء الاصطناعي:* {ai_status}\n"
+                f"• *المستخدمون النشطون:* `{active_count}`\n"
+                f"• *طلبات الانضمام المعلقة:* `{pending_count}`\n"
+                f"• *رتبتك:* {role_title}\n\n"
+                "النظام جاهز ويعمل بكفاءة."
+            )
+        else:
+            text = (
+                f"📊 *حالة حسابك يا {first_name}:*\n\n"
+                f"• *المعرف الرقمي:* `{chat_id}`\n"
+                "• *الحالة:* 🟢 نشط ومفعل\n"
+                "• *الرتبة:* مستخدم عادي (User)\n"
+                "• *استقبال الإشعارات:* مفعل فور رصد أي فرصة مطابقة"
+            )
+
+        self._notifier.send_text(chat_id=chat_id, text=text)
+        return {"status": "status_reported", "chat_id": chat_id}
 
     def _cmd_users(
         self, chat_id: int, username: str | None, first_name: str, args: list[str]

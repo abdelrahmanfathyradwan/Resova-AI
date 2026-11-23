@@ -461,3 +461,105 @@ def test_13_owner_auto_provisioned_from_environment(
     assert legacy_owner.role == TelegramUserRole.owner
     assert legacy_owner.status == TelegramUserStatus.active
 
+
+def test_14_status_command_for_owner_and_users(
+    session: Session, mock_notifier: MagicMock, telegram_settings: Settings
+) -> None:
+    """Test /status command behavior for Owner, active User, and pending User."""
+    manager = TelegramUserManager(session, telegram_settings, notifier=mock_notifier)
+    repo = TelegramUserRepository(session)
+
+    # 1. Owner runs /status
+    update_owner = {
+        "message": {
+            "chat": {"id": OWNER_CHAT_ID},
+            "from": {"id": OWNER_CHAT_ID, "first_name": "المالك"},
+            "text": "/status",
+        }
+    }
+    res_owner = manager.process_update(update_owner)
+    assert res_owner["status"] == "status_reported"
+    owner_call = mock_notifier.send_text.call_args[1]
+    assert "لوحة حالة نظام Resova AI" in owner_call["text"]
+    assert "المالك (Owner)" in owner_call["text"]
+
+    # 2. Active user runs /status
+    user_a, _ = repo.register_or_update(
+        chat_id=USER_A_CHAT_ID,
+        first_name="أحمد",
+        status=TelegramUserStatus.active,
+    )
+    update_user = {
+        "message": {
+            "chat": {"id": USER_A_CHAT_ID},
+            "from": {"id": USER_A_CHAT_ID, "first_name": "أحمد"},
+            "text": "/status",
+        }
+    }
+    res_user = manager.process_update(update_user)
+    assert res_user["status"] == "status_reported"
+    user_call = mock_notifier.send_text.call_args[1]
+    assert "حالة حسابك يا أحمد" in user_call["text"]
+    assert "نشط ومفعل" in user_call["text"]
+
+    # 3. Pending user runs /status
+    repo.register_or_update(
+        chat_id=USER_B_CHAT_ID,
+        first_name="خالد",
+        status=TelegramUserStatus.pending,
+    )
+    update_pending = {
+        "message": {
+            "chat": {"id": USER_B_CHAT_ID},
+            "from": {"id": USER_B_CHAT_ID, "first_name": "خالد"},
+            "text": "/status",
+        }
+    }
+    res_pending = manager.process_update(update_pending)
+    assert res_pending["status"] == "unauthorized"
+
+
+@pytest.mark.anyio()
+async def test_15_telegram_poller_processes_updates(
+    session: Session, telegram_settings: Settings, mock_notifier: MagicMock
+) -> None:
+    """TelegramPoller fetches updates from Telegram API and dispatches them."""
+    import httpx
+
+    from resova.telegram.poller import TelegramPoller
+
+    engine = session.get_bind()
+    poller = TelegramPoller(telegram_settings, engine=engine, notifier=mock_notifier)
+
+    updates_data = {
+        "ok": True,
+        "result": [
+            {
+                "update_id": 1001,
+                "message": {
+                    "chat": {"id": OWNER_CHAT_ID},
+                    "from": {"id": OWNER_CHAT_ID, "first_name": "المالك"},
+                    "text": "/status",
+                },
+            },
+            {
+                "update_id": 1002,
+                "message": {
+                    "chat": {"id": USER_A_CHAT_ID},
+                    "from": {"id": USER_A_CHAT_ID, "first_name": "أحمد"},
+                    "text": "/start",
+                },
+            },
+        ],
+    }
+
+    class MockTransport(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=updates_data)
+
+    async with httpx.AsyncClient(transport=MockTransport()) as client:
+        processed = await poller.poll_once(client)
+
+    assert processed == 2
+    assert poller._offset == 1003
+

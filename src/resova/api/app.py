@@ -73,6 +73,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await scheduler.start()
         app.state.scheduler = scheduler
 
+        # Start telegram update poller if enabled
+        from resova.telegram.poller import TelegramPoller
+
+        telegram_poller = TelegramPoller(app_settings, engine=app.state.engine)
+        await telegram_poller.start()
+        app.state.telegram_poller = telegram_poller
+
         logger.info(
             "Resova %s started (env=%s, db=%s)",
             __version__,
@@ -83,6 +90,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            if hasattr(app.state, "telegram_poller"):
+                await app.state.telegram_poller.stop()
             if hasattr(app.state, "scheduler"):
                 await app.state.scheduler.stop()
             app.state.engine.dispose()

@@ -7,5 +7,6 @@ Never submits proposals or contacts clients.
 
 from resova.telegram.bot import TelegramNotifier
 from resova.telegram.manager import TelegramUserManager
+from resova.telegram.poller import TelegramPoller
 
-__all__ = ["TelegramNotifier", "TelegramUserManager"]
+__all__ = ["TelegramNotifier", "TelegramUserManager", "TelegramPoller"]
