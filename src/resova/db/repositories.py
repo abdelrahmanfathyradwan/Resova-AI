@@ -32,7 +32,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from resova.db.base import utcnow
-from resova.db.models import Platform, Project, SourceKind
+from resova.db.models import (
+    Platform,
+    Project,
+    SourceKind,
+    TelegramUser,
+    TelegramUserRole,
+    TelegramUserStatus,
+)
 from resova.utils.identity import content_key, external_key, url_key
 from resova.utils.normalize import normalize_url
 
@@ -57,6 +64,7 @@ MUTABLE_FIELDS: tuple[str, ...] = (
     "comments_count",
     "offers_count",
     "published_at",
+    "last_activity_at",
 )
 
 
@@ -93,6 +101,7 @@ class ProjectUpsert:
     comments_count: int | None = None
     offers_count: int | None = None
     published_at: datetime | None = None
+    last_activity_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -321,3 +330,147 @@ class ProjectRepository:
 def _redact_keys(keys: dict[str, str | None]) -> dict[str, str]:
     """Log-safe view of key hashes: presence only, never the full hash."""
     return {name: ("set" if value else "null") for name, value in keys.items()}
+
+
+class TelegramUserRepository:
+    """Repository for managing registered Telegram users."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def get_by_chat_id(self, chat_id: int) -> TelegramUser | None:
+        stmt = select(TelegramUser).where(TelegramUser.telegram_chat_id == chat_id)
+        return self._session.execute(stmt).scalar_one_or_none()
+
+    def get_by_id(self, user_id: int) -> TelegramUser | None:
+        stmt = select(TelegramUser).where(TelegramUser.id == user_id)
+        return self._session.execute(stmt).scalar_one_or_none()
+
+    def get_by_identifier(self, identifier: int | str) -> TelegramUser | None:
+        """Find user by database ID or telegram_chat_id or username."""
+        if isinstance(identifier, int) or (isinstance(identifier, str) and identifier.isdigit()):
+            val = int(identifier)
+            user = self.get_by_chat_id(val)
+            if user is not None:
+                return user
+            return self.get_by_id(val)
+        if isinstance(identifier, str):
+            clean = identifier.lstrip("@").strip()
+            stmt = select(TelegramUser).where(TelegramUser.username == clean)
+            return self._session.execute(stmt).scalar_one_or_none()
+        return None
+
+    def register_or_update(
+        self,
+        chat_id: int,
+        username: str | None = None,
+        first_name: str | None = None,
+        role: TelegramUserRole = TelegramUserRole.user,
+        status: TelegramUserStatus = TelegramUserStatus.pending,
+    ) -> tuple[TelegramUser, bool]:
+        """Register a user if not existing, or update their username/first_name."""
+        user = self.get_by_chat_id(chat_id)
+        if user is None:
+            user = TelegramUser(
+                telegram_chat_id=chat_id,
+                username=username,
+                first_name=first_name,
+                role=role,
+                status=status,
+                registered_at=utcnow(),
+            )
+            self._session.add(user)
+            self._session.flush()
+            return user, True
+
+        updated = False
+        if username and user.username != username:
+            user.username = username
+            updated = True
+        if first_name and user.first_name != first_name:
+            user.first_name = first_name
+            updated = True
+        if updated:
+            self._session.flush()
+        return user, False
+
+    def list_users(
+        self,
+        role: TelegramUserRole | None = None,
+        status: TelegramUserStatus | None = None,
+    ) -> list[TelegramUser]:
+        stmt = select(TelegramUser)
+        conditions = []
+        if role is not None:
+            conditions.append(TelegramUser.role == role)
+        if status is not None:
+            conditions.append(TelegramUser.status == status)
+        if conditions:
+            stmt = stmt.where(*conditions)
+        stmt = stmt.order_by(TelegramUser.id)
+        return list(self._session.execute(stmt).scalars().all())
+
+    def list_active_chat_ids(self) -> list[int]:
+        """Return all chat IDs authorized to receive notifications."""
+        stmt = select(TelegramUser.telegram_chat_id).where(
+            TelegramUser.status == TelegramUserStatus.active
+        )
+        return list(self._session.execute(stmt).scalars().all())
+
+    def update_status(
+        self,
+        chat_id: int,
+        status: TelegramUserStatus,
+        approved_by: int | None = None,
+    ) -> TelegramUser | None:
+        user = self.get_by_chat_id(chat_id)
+        if user is None:
+            return None
+        user.status = status
+        if status == TelegramUserStatus.active and approved_by is not None:
+            user.approved_at = utcnow()
+            user.approved_by = approved_by
+        self._session.flush()
+        return user
+
+    def update_role(self, chat_id: int, role: TelegramUserRole) -> TelegramUser | None:
+        user = self.get_by_chat_id(chat_id)
+        if user is None:
+            return None
+        user.role = role
+        self._session.flush()
+        return user
+
+    def ensure_owner(
+        self,
+        owner_chat_id: int,
+        username: str | None = None,
+        first_name: str | None = "مالك النظام",
+    ) -> TelegramUser:
+        """Ensure the trusted owner has an active owner record in DB."""
+        user = self.get_by_chat_id(owner_chat_id)
+        if user is None:
+            now = utcnow()
+            user = TelegramUser(
+                telegram_chat_id=owner_chat_id,
+                username=username,
+                first_name=first_name,
+                role=TelegramUserRole.owner,
+                status=TelegramUserStatus.active,
+                registered_at=now,
+                approved_at=now,
+                approved_by=owner_chat_id,
+            )
+            self._session.add(user)
+            self._session.flush()
+        else:
+            changed = False
+            if user.role != TelegramUserRole.owner:
+                user.role = TelegramUserRole.owner
+                changed = True
+            if user.status != TelegramUserStatus.active:
+                user.status = TelegramUserStatus.active
+                changed = True
+            if changed:
+                self._session.flush()
+        return user

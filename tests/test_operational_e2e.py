@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from resova.ai.analyzer import AIAnalyzer, AnalysisResult
 from resova.config.settings import Settings
-from resova.db.base import Base
+from resova.db.base import Base, utcnow
 from resova.db.models import (
     DraftStatus,
     Notification,
@@ -243,6 +243,7 @@ def test_4_telegram_notification_content_and_safety(
         source_kind=SourceKind.manual_paste,
         title="مطلوب مهندس إطفاء حريق معتمد",
         url="https://mostaql.com/projects/telegram-test",
+        published_at=utcnow(),
     )
 
     result = service.ingest_project(upsert_data)

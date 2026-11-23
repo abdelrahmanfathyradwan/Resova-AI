@@ -24,6 +24,7 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -57,8 +58,10 @@ class SourceKind(enum.StrEnum):
 
 class NotificationStatus(enum.StrEnum):
     pending = "pending"
+    pending_digest = "pending_digest"
     sent = "sent"
     failed = "failed"
+    skipped = "skipped"
 
 
 class SyncStatus(enum.StrEnum):
@@ -76,8 +79,22 @@ class DraftStatus(enum.StrEnum):
 class ScoreBand(enum.StrEnum):
     strong = "strong"
     good = "good"
+    moderate = "moderate"
     weak = "weak"
     below = "below"
+
+
+class TelegramUserRole(enum.StrEnum):
+    owner = "owner"
+    admin = "admin"
+    user = "user"
+
+
+class TelegramUserStatus(enum.StrEnum):
+    pending = "pending"
+    active = "active"
+    rejected = "rejected"
+    disabled = "disabled"
 
 
 def _enum(enum_type: type[enum.Enum], length: int = 32) -> Enum:
@@ -119,6 +136,7 @@ class Project(Base, TimestampMixin):
     offers_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_activity_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
@@ -180,6 +198,7 @@ class ProjectAnalysis(Base, TimestampMixin):
     )
     track: Mapped[str | None] = mapped_column(String(64), nullable=True)
     score: Mapped[int] = mapped_column(Integer, nullable=False)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     band: Mapped[ScoreBand | None] = mapped_column(_enum(ScoreBand), nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -286,3 +305,25 @@ class SystemSetting(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
     value: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class TelegramUser(Base, TimestampMixin):
+    """A registered Telegram user with role and approval status."""
+
+    __tablename__ = "telegram_users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    telegram_chat_id: Mapped[int] = mapped_column(
+        BigInteger, unique=True, index=True, nullable=False
+    )
+    username: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    first_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    role: Mapped[TelegramUserRole] = mapped_column(
+        _enum(TelegramUserRole), nullable=False, default=TelegramUserRole.user
+    )
+    status: Mapped[TelegramUserStatus] = mapped_column(
+        _enum(TelegramUserStatus), nullable=False, default=TelegramUserStatus.pending
+    )
+    registered_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    approved_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

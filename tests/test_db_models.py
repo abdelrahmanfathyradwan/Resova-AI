@@ -23,7 +23,7 @@ from resova.db.session import create_db_engine, create_session_factory, session_
 
 ROOT = Path(__file__).resolve().parents[1]
 
-#: Exactly nine tables (+ Alembic's own ``alembic_version``).
+#: Exactly ten tables (+ Alembic's own ``alembic_version``).
 EXPECTED_TABLES = {
     "projects",
     "source_messages",
@@ -34,6 +34,7 @@ EXPECTED_TABLES = {
     "sync_logs",
     "user_profile",
     "system_settings",
+    "telegram_users",
 }
 
 
@@ -57,11 +58,11 @@ def _project(**overrides: object) -> Project:
 # --- schema shape --------------------------------------------------------------
 
 
-def test_schema_has_exactly_the_nine_tables(engine: Engine) -> None:
+def test_schema_has_exactly_the_expected_tables(engine: Engine) -> None:
     assert set(inspect(engine).get_table_names()) == EXPECTED_TABLES
 
 
-def test_every_model_maps_to_one_of_the_nine_tables(engine: Engine) -> None:
+def test_every_model_maps_to_one_of_the_expected_tables(engine: Engine) -> None:
     tables = set(inspect(engine).get_table_names())
     for table in Base.metadata.tables:
         assert table in tables

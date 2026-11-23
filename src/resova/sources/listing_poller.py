@@ -24,7 +24,7 @@ import logging
 import random
 import re
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import httpx
 from bs4 import BeautifulSoup
@@ -32,6 +32,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from resova.config.settings import Settings, get_settings
+from resova.db.base import utcnow
 from resova.db.models import Platform, Project, SourceKind
 from resova.db.repositories import ProjectUpsert
 from resova.sources.base import (
@@ -44,6 +45,48 @@ from resova.sources.base import (
 from resova.utils.normalize import normalize_url
 
 log = logging.getLogger(__name__)
+
+
+def _parse_khamsat_date(title_str: str) -> datetime | None:
+    """Parse Khamsat timestamp string, e.g. '22/11/2026 13:34:46 GMT'."""
+    try:
+        clean = title_str.replace("GMT", "").strip()
+        dt = datetime.strptime(clean, "%d/%m/%Y %H:%M:%S")
+        return dt.replace(tzinfo=None)
+    except Exception:
+        return None
+
+
+def _parse_mostaql_date(dt_str: str) -> datetime | None:
+    """Parse Mostaql ISO timestamp string, e.g. '2026-11-23 08:39:10'."""
+    try:
+        dt = datetime.fromisoformat(dt_str.strip().replace("Z", ""))
+        return dt.replace(tzinfo=None)
+    except Exception:
+        return None
+
+
+def _parse_relative_arabic_date(text: str, now: datetime | None = None) -> datetime | None:
+    """Parse relative Arabic time string, e.g. 'منذ 3 ساعات' or 'منذ 9 أيام'."""
+    now = now or utcnow()
+    text = text.strip()
+    if m := re.search(r"منذ\s+(\d+)\s+دقيق", text):
+        return now - timedelta(minutes=int(m.group(1)))
+    if m := re.search(r"منذ\s+(\d+)\s+ساع", text):
+        return now - timedelta(hours=int(m.group(1)))
+    if "منذ ساعة" in text:
+        return now - timedelta(hours=1)
+    if "منذ ساعتين" in text:
+        return now - timedelta(hours=2)
+    if m := re.search(r"منذ\s+(\d+)\s+أيام", text):
+        return now - timedelta(days=int(m.group(1)))
+    if m := re.search(r"منذ\s+(\d+)\s+يوم", text):
+        return now - timedelta(days=int(m.group(1)))
+    if "منذ يومين" in text:
+        return now - timedelta(days=2)
+    if "منذ يوم" in text:
+        return now - timedelta(days=1)
+    return None
 
 
 class _MostaqlParser:
@@ -76,6 +119,16 @@ class _MostaqlParser:
             desc_el = card.select_one("p.project-brief, div.project-details, td.details")
             description = desc_el.get_text(strip=True) if desc_el else None
 
+            # Extract published date
+            published_at = None
+            time_el = card.select_one("time[datetime], time[title], time")
+            if time_el:
+                dt_str = time_el.get("datetime") or time_el.get("title")
+                if dt_str:
+                    published_at = _parse_mostaql_date(str(dt_str))
+                if not published_at:
+                    published_at = _parse_relative_arabic_date(time_el.get_text(strip=True))
+
             projects.append(
                 RawProject(
                     source_kind=SourceKind.website_page,
@@ -83,6 +136,7 @@ class _MostaqlParser:
                     description=description,
                     url=str(href),
                     external_id=external_id,
+                    published_at=published_at,
                     extras={"category": category, "platform": Platform.mostaql},
                 )
             )
@@ -121,6 +175,25 @@ class _KhamsatParser:
             desc_el = row.select_one("p.details, td.details")
             description = desc_el.get_text(strip=True) if desc_el else None
 
+            # Extract published date and last activity
+            published_at = None
+            last_activity_at = None
+
+            # Khamsat publish date is in span[dir="ltr"][title] or clock icon list item
+            for span in row.select("span[title], li span"):
+                txt = span.get_text(strip=True)
+                title_attr = span.get("title")
+                if "آخر تفاعل" in txt:
+                    if title_attr:
+                        last_activity_at = _parse_khamsat_date(str(title_attr))
+                    if not last_activity_at:
+                        last_activity_at = _parse_relative_arabic_date(txt)
+                elif "منذ" in txt and not published_at:
+                    if title_attr:
+                        published_at = _parse_khamsat_date(str(title_attr))
+                    if not published_at:
+                        published_at = _parse_relative_arabic_date(txt)
+
             projects.append(
                 RawProject(
                     source_kind=SourceKind.website_page,
@@ -128,6 +201,8 @@ class _KhamsatParser:
                     description=description,
                     url=str(href),
                     external_id=external_id,
+                    published_at=published_at,
+                    last_activity_at=last_activity_at,
                     extras={"category": category, "platform": Platform.khamsat},
                 )
             )
@@ -330,6 +405,8 @@ class ListingPoller(BaseSource):
             title=raw.title,
             description=raw.description,
             category=raw.extras.get("category"),
+            published_at=raw.published_at,
+            last_activity_at=raw.last_activity_at,
         )
 
     def health_check(self) -> bool:

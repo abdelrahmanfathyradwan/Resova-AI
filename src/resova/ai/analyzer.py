@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -16,6 +17,7 @@ from resova.config.profile import ClientProfile, load_profile
 from resova.config.settings import Settings
 from resova.db.models import ScoreBand
 from resova.utils.errors import AIError
+from resova.utils.normalize import normalize_text
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +32,22 @@ Rules:
 - Score 0–100 where higher means better match.
 - Only use confirmed skills from the profile. Never assume skills not listed.
 - Missing data should be noted as "not provided", never invented.
+- Brief/Short descriptions: Do NOT disqualify or heavily penalize a project
+  merely because its description is brief or concise. If the title or available
+  text clearly aligns with a confirmed skill, evaluate the match directly based
+  on the confirmed skill.
+- Separate match_score (0-100 skill alignment) from confidence (0.0-1.0 certainty
+  based on available information). A short description should express uncertainty
+  through lower confidence, not by arbitrarily crushing the match score.
+- Match score bands:
+  * 85–100 (strong): Direct, unambiguous match to confirmed core skills.
+  * 70–84 (good): Strong match covering most requirements.
+  * 45–69 (moderate): Partial / adjacent match or concise description with relevant keywords.
+  * 0–44 (below): Out-of-scope or unrelated domain (e.g. logo, software, video).
+- Budget is NEVER a reason to exclude a project or reduce match score.
 - Competition level (offers/comments) should only be mentioned if explicitly provided.
-- Budget is NEVER a reason to exclude a project.
-- Respond in valid JSON only.
+- Explain matching rationale and explicitly cite which confirmed skill(s) were matched.
+- Respond with valid JSON only.
 """
 
 
@@ -76,7 +91,8 @@ Analyze this freelance project opportunity:
 Respond with ONLY valid JSON in this exact format:
 {{
   "score": <0-100>,
-  "band": "<strong|good|weak|below>",
+  "confidence": <0.0-1.0>,
+  "band": "<strong|good|moderate|below>",
   "primary_track": "<track_id or null>",
   "matching_skills": ["skill1", "skill2"],
   "missing_skills": ["skill1"],
@@ -84,7 +100,7 @@ Respond with ONLY valid JSON in this exact format:
   "rationale": "<why this score>",
   "risks": ["risk1", "risk2"],
   "language": "<ar|en>",
-  "recommendation": "<notify|skip>"
+  "recommendation": "<notify|digest|skip>"
 }}
 """
 
@@ -104,6 +120,7 @@ class AnalysisResult:
     language: str
     recommendation: str
     model: str
+    confidence: float = 1.0
     prompt_version: str = PROMPT_VERSION
     raw_response: dict[str, Any] = field(default_factory=dict)
 
@@ -115,8 +132,9 @@ def _score_to_band(score: int, profile: ClientProfile) -> ScoreBand:
         return ScoreBand.strong
     if score >= bands.good:
         return ScoreBand.good
-    if score >= bands.weak:
-        return ScoreBand.weak
+    moderate_threshold = getattr(bands, "moderate", getattr(bands, "weak", 45))
+    if score >= moderate_threshold:
+        return ScoreBand.moderate
     return ScoreBand.below
 
 
@@ -226,6 +244,12 @@ class AIAnalyzer:
 
         score = max(0, min(100, int(parsed.get("score", 0))))
         band = _score_to_band(score, profile)
+        confidence = 1.0
+        if "confidence" in parsed:
+            try:
+                confidence = max(0.0, min(1.0, float(parsed["confidence"])))
+            except (ValueError, TypeError):
+                confidence = 1.0
 
         return AnalysisResult(
             score=score,
@@ -239,6 +263,7 @@ class AIAnalyzer:
             language=parsed.get("language", "ar"),
             recommendation=parsed.get("recommendation", "skip"),
             model=model,
+            confidence=confidence,
             raw_response=parsed,
         )
 
@@ -258,20 +283,34 @@ class AIAnalyzer:
         matching_skills: list[str] = []
         primary_track: str | None = None
 
-        title_lower = (title or "").lower()
-        desc_lower = (description or "").lower()
-        combined = f"{title_lower} {desc_lower}"
+        title_norm = normalize_text(title or "")
+        desc_norm = normalize_text(description or "")
+        combined = f"{title_norm} {desc_norm}"
+        # Also include version with definite article 'ال' stripped from word boundaries
+        no_al = re.sub(r"\bال", "", combined)
+        search_corpus = f"{combined} {no_al}"
 
         for track in profile.tracks:
-            track_score = 0
-            for keyword in track.match_keywords:
-                kw_lower = keyword.lower()
-                if kw_lower in combined:
-                    track_score += 15
-                    matching_skills.append(keyword)
-            if track_score > score:
-                score = track_score
-                primary_track = track.id
+            matched_in_track = [
+                kw for kw in track.match_keywords
+                if normalize_text(kw) in search_corpus
+                or re.sub(r"\bال", "", normalize_text(kw)) in search_corpus
+            ]
+            if matched_in_track:
+                count = len(matched_in_track)
+                if count == 1:
+                    track_score = 50
+                elif count == 2:
+                    track_score = 70
+                elif count == 3:
+                    track_score = 85
+                else:
+                    track_score = min(100, 85 + (count - 3) * 5)
+
+                if track_score > score:
+                    score = track_score
+                    primary_track = track.id
+                    matching_skills = matched_in_track
 
         # Clamp score
         score = max(0, min(100, score))
@@ -282,6 +321,10 @@ class AIAnalyzer:
                 score = max(0, score - 30)
 
         band = _score_to_band(score, profile)
+        confidence = (
+            0.9 if description and len(matching_skills) >= 2
+            else (0.6 if description else 0.5)
+        )
 
         count_matched = len(matching_skills)
         return AnalysisResult(
@@ -296,4 +339,5 @@ class AIAnalyzer:
             language="ar",
             recommendation="notify" if score >= profile.settings.min_match_score else "skip",
             model="keyword-scorer",
+            confidence=confidence,
         )

@@ -25,19 +25,35 @@ def _format_opportunity_message(
     band: str,
     summary: str | None = None,
     proposal_draft: str | None = None,
+    confidence: float | None = None,
+    rationale: str | None = None,
     language: str = "ar",
 ) -> str:
     """Format a Telegram notification message for an opportunity."""
+    band_lower = str(band).lower()
+    if "strong" in band_lower or score >= 85:
+        badge = "🟢 *فرصة ممتازة*"
+    elif "good" in band_lower or score >= 70:
+        badge = "🟡 *فرصة جيدة جداً*"
+    else:
+        badge = "🔵 *فرصة واعدة*"
+
     if language == "ar":
         lines = [
             "🔔 *فرصة جديدة*",
+            badge,
             "",
             f"📋 *العنوان:* {_escape_md(title)}",
             f"🌐 *المنصة:* {platform}",
             f"📊 *التقييم:* {score}/100 ({band})",
         ]
+        if confidence is not None:
+            lines.append(f"🎯 *درجة الثقة:* {int(confidence * 100)}%")
         if url:
             lines.append(f"🔗 *الرابط:* {url}")
+        if rationale:
+            lines.append("")
+            lines.append(f"💡 *سبب المطابقة:* {_escape_md(rationale)}")
         if summary:
             lines.append("")
             lines.append(f"📝 *الملخص:* {_escape_md(summary)}")
@@ -50,13 +66,19 @@ def _format_opportunity_message(
     else:
         lines = [
             "🔔 *New Opportunity*",
+            badge,
             "",
             f"📋 *Title:* {_escape_md(title)}",
             f"🌐 *Platform:* {platform}",
             f"📊 *Score:* {score}/100 ({band})",
         ]
+        if confidence is not None:
+            lines.append(f"🎯 *Confidence:* {int(confidence * 100)}%")
         if url:
             lines.append(f"🔗 *Link:* {url}")
+        if rationale:
+            lines.append("")
+            lines.append(f"💡 *Rationale:* {_escape_md(rationale)}")
         if summary:
             lines.append("")
             lines.append(f"📝 *Summary:* {_escape_md(summary)}")
@@ -110,11 +132,12 @@ class TelegramNotifier:
     @property
     def enabled(self) -> bool:
         """Whether Telegram notifications are configured and enabled."""
+        owner_id = self._settings.owner_chat_id
         return (
             self._settings.enable_telegram
             and self._settings.telegram_bot_token is not None
-            and self._settings.telegram_allowed_user_id is not None
-            and self._settings.telegram_allowed_user_id > 0
+            and owner_id is not None
+            and owner_id > 0
         )
 
     def send_opportunity(
@@ -127,15 +150,15 @@ class TelegramNotifier:
         band: str,
         summary: str | None = None,
         proposal_draft: str | None = None,
+        confidence: float | None = None,
+        rationale: str | None = None,
         language: str = "ar",
+        recipients: list[int] | None = None,
     ) -> dict[str, Any]:
-        """Send an opportunity notification to the authorised user.
+        """Send an opportunity notification to authorized users.
 
         Returns a dict with ``status``, ``message_id`` (if sent), and ``error`` (if failed).
         Prevents duplicate sends for the same ``project_id`` within the session.
-
-        Raises:
-            TelegramError: When Telegram is not configured or sending fails.
         """
         if not self.enabled:
             raise TelegramError("Telegram notifications are not configured")
@@ -157,50 +180,130 @@ class TelegramNotifier:
             band=band,
             summary=summary,
             proposal_draft=proposal_draft,
+            confidence=confidence,
+            rationale=rationale,
             language=language,
         )
 
-        try:
-            result = self._send_message(message)
+        recipient_list = list(dict.fromkeys(recipients or [self._settings.owner_chat_id]))
+        recipient_list = [cid for cid in recipient_list if cid is not None]
+
+        sent_count = 0
+        first_msg_id = None
+        last_error = None
+
+        for cid in recipient_list:
+            try:
+                res = self._send_message(message, chat_id=cid)
+                sent_count += 1
+                if first_msg_id is None:
+                    first_msg_id = res.get("message_id")
+            except Exception as exc:
+                logger.error("Failed to send Telegram notification to user %d: %s", cid, exc)
+                last_error = str(exc)
+
+        if sent_count > 0:
             self._sent_project_ids.add(project_id)
             return {
                 "status": NotificationStatus.sent,
-                "message_id": result.get("message_id"),
-                "error": None,
+                "message_id": first_msg_id,
+                "sent_count": sent_count,
+                "error": last_error,
             }
-        except Exception as exc:
-            logger.error("Failed to send Telegram notification for project %d: %s", project_id, exc)
+        return {
+            "status": NotificationStatus.failed,
+            "message_id": None,
+            "error": last_error or "Failed to deliver to any recipient",
+        }
+
+    def send_digest(
+        self,
+        items: list[dict[str, Any]],
+        language: str = "ar",
+        recipients: list[int] | None = None,
+    ) -> dict[str, Any]:
+        """Send a single consolidated digest message for moderate opportunities."""
+        if not self.enabled:
+            return {"status": NotificationStatus.skipped, "reason": "telegram_disabled"}
+        if not items:
+            return {"status": "empty", "count": 0}
+
+        lines = [
+            "📋 *ملخص الفرص الواعدة (Moderate Opportunities)*",
+            f"تم رصد {len(items)} فرصة جديدة محتملة تحتاج مراجعة:",
+            "",
+        ]
+        for i, item in enumerate(items, 1):
+            title = _escape_md(item.get("title", ""))
+            score = item.get("score", 0)
+            url = item.get("url")
+            platform = item.get("platform", "")
+            if url:
+                lines.append(f"{i}\\. [{title}]({url}) — *{score}/100* ({platform})")
+            else:
+                lines.append(f"{i}\\. {title} — *{score}/100* ({platform})")
+
+        message = "\n".join(lines)
+        recipient_list = list(dict.fromkeys(recipients or [self._settings.owner_chat_id]))
+        recipient_list = [cid for cid in recipient_list if cid is not None]
+
+        sent_count = 0
+        first_msg_id = None
+        last_error = None
+
+        for cid in recipient_list:
+            try:
+                res = self._send_message(message, chat_id=cid)
+                sent_count += 1
+                if first_msg_id is None:
+                    first_msg_id = res.get("message_id")
+            except Exception as exc:
+                logger.error("Failed to send Telegram digest to user %d: %s", cid, exc)
+                last_error = str(exc)
+
+        if sent_count > 0:
             return {
-                "status": NotificationStatus.failed,
-                "message_id": None,
-                "error": str(exc),
+                "status": NotificationStatus.sent,
+                "message_id": first_msg_id,
+                "sent_count": sent_count,
+                "count": len(items),
             }
+        return {
+            "status": NotificationStatus.failed,
+            "error": last_error or "Failed to deliver digest to any recipient",
+            "count": len(items),
+        }
 
-    def _send_message(self, text: str) -> dict[str, Any]:
-        """Send a message via Telegram Bot API.
-
-        Uses httpx for HTTP calls to avoid heavy dependencies.
-        """
+    def _send_message(
+        self,
+        text: str,
+        chat_id: int | None = None,
+        reply_markup: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Send a message via Telegram Bot API."""
         import httpx
 
         token = self._settings.telegram_bot_token
         if token is None:
             raise TelegramError("Telegram bot token is not set")
 
-        chat_id = self._settings.telegram_allowed_user_id
+        target_chat_id = chat_id or self._settings.owner_chat_id
+        if target_chat_id is None:
+            raise TelegramError("Target chat_id is not specified and owner_chat_id is unset")
+
         api_url = f"https://api.telegram.org/bot{token.get_secret_value()}/sendMessage"
+        payload: dict[str, Any] = {
+            "chat_id": target_chat_id,
+            "text": text,
+            "parse_mode": "Markdown",
+            "disable_web_page_preview": True,
+        }
+        if reply_markup is not None:
+            payload["reply_markup"] = reply_markup
 
         try:
             with httpx.Client(timeout=15.0) as client:
-                response = client.post(
-                    api_url,
-                    json={
-                        "chat_id": chat_id,
-                        "text": text,
-                        "parse_mode": "Markdown",
-                        "disable_web_page_preview": True,
-                    },
-                )
+                response = client.post(api_url, json=payload)
                 response.raise_for_status()
                 data = response.json()
 
@@ -216,8 +319,48 @@ class TelegramNotifier:
         except httpx.HTTPError as exc:
             raise TelegramError(f"HTTP error sending Telegram message: {exc}") from exc
 
-    def send_text(self, text: str) -> dict[str, Any]:
-        """Send a plain text message (for status updates, etc.)."""
+    def send_message_with_keyboard(
+        self,
+        chat_id: int,
+        text: str,
+        reply_markup: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Send a message with inline keyboard markup."""
         if not self.enabled:
             raise TelegramError("Telegram notifications are not configured")
-        return self._send_message(text)
+        return self._send_message(text=text, chat_id=chat_id, reply_markup=reply_markup)
+
+    def answer_callback_query(
+        self,
+        callback_query_id: str,
+        text: str | None = None,
+        show_alert: bool = False,
+    ) -> dict[str, Any]:
+        """Answer a Telegram callback query."""
+        import httpx
+
+        token = self._settings.telegram_bot_token
+        if token is None:
+            raise TelegramError("Telegram bot token is not set")
+
+        api_url = f"https://api.telegram.org/bot{token.get_secret_value()}/answerCallbackQuery"
+        payload: dict[str, Any] = {"callback_query_id": callback_query_id}
+        if text:
+            payload["text"] = text
+        if show_alert:
+            payload["show_alert"] = show_alert
+
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                response = client.post(api_url, json=payload)
+                response.raise_for_status()
+                return {"ok": True}
+        except Exception as exc:
+            logger.warning("Failed to answer callback query %s: %s", callback_query_id, exc)
+            return {"ok": False, "error": str(exc)}
+
+    def send_text(self, text: str, chat_id: int | None = None) -> dict[str, Any]:
+        """Send a plain text message to a specific user or the owner."""
+        if not self.enabled:
+            raise TelegramError("Telegram notifications are not configured")
+        return self._send_message(text=text, chat_id=chat_id)

@@ -98,21 +98,25 @@ class OutOfScopeDomain(BaseModel):
 
 
 class ScoreBands(BaseModel):
-    """Score band boundaries, which must satisfy ``strong > good > weak``."""
+    """Score band boundaries, which must satisfy ``strong > good > moderate``."""
 
     model_config = ConfigDict(extra="forbid")
 
     strong: int
     good: int
-    weak: int
+    moderate: int = 45
+    weak: int = 45
 
     @model_validator(mode="after")
     def _check_band_order(self) -> ScoreBands:
-        if not (0 <= self.weak < self.good < self.strong <= 100):
-            raise ValueError(
-                "score_bands must satisfy 0 <= weak < good < strong <= 100 "
-                f"(got weak={self.weak}, good={self.good}, strong={self.strong})"
+        threshold = min(self.moderate, self.weak)
+        if not (0 <= threshold < self.good < self.strong <= 100):
+            msg = (
+                "score_bands must satisfy 0 <= moderate/weak < good < strong <= 100 "
+                f"(got moderate={self.moderate}, weak={self.weak}, "
+                f"good={self.good}, strong={self.strong})"
             )
+            raise ValueError(msg)
         return self
 
 

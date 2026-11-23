@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from resova.ai.analyzer import AIAnalyzer, AnalysisResult
@@ -90,6 +91,7 @@ class IngestionService:
             if analysis is not None:
                 result["analysis"] = {
                     "score": analysis.score,
+                    "confidence": analysis.confidence,
                     "band": analysis.band.value
                     if isinstance(analysis.band, ScoreBand)
                     else analysis.band,
@@ -102,6 +104,7 @@ class IngestionService:
                         project_id=project.id,
                         track=analysis.primary_track,
                         score=analysis.score,
+                        confidence=analysis.confidence,
                         band=analysis.band,
                         summary=analysis.summary,
                         rationale=analysis.rationale,
@@ -115,12 +118,125 @@ class IngestionService:
                     logger.error("Failed to save analysis: %s", exc)
                     result["errors"].append(f"save_analysis: {exc}")
 
-                # 4. Notify if score meets threshold
-                if analysis.score >= self.profile.settings.min_match_score:
-                    notif_result = self._notify(project, analysis)
-                    result["notification"] = notif_result
+                # 4. Check freshness & Notify according to score thresholds
+                notif_result = self._process_notification(project, analysis)
+                result["notification"] = notif_result
 
         return result
+
+    def _process_notification(self, project: Project, analysis: AnalysisResult) -> dict[str, Any]:
+        """Process opportunity notification according to score thresholds and freshness."""
+        min_score = self.profile.settings.min_match_score
+
+        # Check score threshold first
+        if analysis.score < min_score:
+            notification = Notification(
+                project_id=project.id,
+                channel="telegram",
+                status=NotificationStatus.skipped,
+                score=analysis.score,
+                sent_at=None,
+                error="below_threshold",
+            )
+            self._session.add(notification)
+            self._session.flush()
+            return {"status": "skipped", "reason": "below_threshold"}
+
+        # Check freshness of publication date
+        if project.published_at is None:
+            logger.info("Project %d skipped: publication date unknown", project.id)
+            notification = Notification(
+                project_id=project.id,
+                channel="telegram",
+                status=NotificationStatus.skipped,
+                score=analysis.score,
+                sent_at=None,
+                error="publication_date_unknown",
+            )
+            self._session.add(notification)
+            self._session.flush()
+            return {"status": "skipped", "reason": "publication_date_unknown"}
+
+        # Calculate project age
+        age_hours = (utcnow() - project.published_at).total_seconds() / 3600.0
+        max_age = getattr(self._settings, "max_notification_age_hours", 48)
+        if age_hours > max_age:
+            logger.info(
+                "Project %d skipped: stale opportunity (age=%.1fh > max=%dh)",
+                project.id,
+                age_hours,
+                max_age,
+            )
+            notification = Notification(
+                project_id=project.id,
+                channel="telegram",
+                status=NotificationStatus.skipped,
+                score=analysis.score,
+                sent_at=None,
+                error="stale_project_skipped",
+            )
+            self._session.add(notification)
+            self._session.flush()
+            return {
+                "status": "skipped",
+                "reason": "stale_project_skipped",
+                "age_hours": round(age_hours, 1),
+            }
+
+        # Route by Score Band
+        # Strong (>=85) or Good (70-84): Immediate individual notification
+        if analysis.score >= 70:
+            return self._notify(project, analysis)
+
+        # Moderate (45-69): Queue for digest to prevent Telegram flood
+        notification = Notification(
+            project_id=project.id,
+            channel="telegram",
+            status=NotificationStatus.pending_digest,
+            score=analysis.score,
+            sent_at=None,
+            error=None,
+        )
+        self._session.add(notification)
+        self._session.flush()
+        return {"status": "pending_digest", "reason": "queued_for_digest"}
+
+    def flush_pending_digest(self) -> dict[str, Any]:
+        """Send all pending moderate notifications as a single consolidated Telegram digest."""
+        stmt = (
+            select(Notification, Project, ProjectAnalysis)
+            .join(Project, Notification.project_id == Project.id)
+            .outerjoin(ProjectAnalysis, ProjectAnalysis.project_id == Project.id)
+            .where(Notification.status == NotificationStatus.pending_digest)
+            .order_by(Notification.id)
+        )
+        rows = self._session.execute(stmt).all()
+        if not rows:
+            return {"status": "empty", "count": 0}
+
+        items = []
+        notifs_to_update = []
+        for notif, proj, pa in rows:
+            items.append({
+                "project_id": proj.id,
+                "title": proj.title,
+                "url": proj.url,
+                "platform": proj.platform.value,
+                "score": notif.score or (pa.score if pa else 0),
+                "track": pa.track if pa else None,
+            })
+            notifs_to_update.append(notif)
+
+        recipients = self._get_active_recipients()
+        res = self._notifier.send_digest(items, recipients=recipients)
+        if res.get("status") == NotificationStatus.sent:
+            now = utcnow()
+            for notif in notifs_to_update:
+                notif.status = NotificationStatus.sent
+                notif.sent_at = now
+                notif.telegram_message_id = res.get("message_id")
+            self._session.flush()
+        return res
 
     def _analyze_project(self, project: Project) -> AnalysisResult | None:
         """Run AI analysis on a project. Returns None on failure."""
@@ -145,23 +261,56 @@ class IngestionService:
             logger.error("Analysis failed for project %d: %s", project.id, exc)
             return None
 
+    def _get_active_recipients(self) -> list[int]:
+        """Return list of chat IDs to notify: all active users + owner."""
+        recipients: list[int] = []
+        try:
+            from resova.db.models import TelegramUser, TelegramUserStatus
+
+            stmt = select(TelegramUser.telegram_chat_id).where(
+                TelegramUser.status == TelegramUserStatus.active
+            )
+            rows = self._session.execute(stmt).scalars().all()
+            recipients.extend(rows)
+        except Exception as exc:
+            logger.warning("Could not query active telegram users: %s", exc)
+
+        owner_id = self._settings.owner_chat_id
+        if owner_id is not None:
+            try:
+                from resova.db.repositories import TelegramUserRepository
+
+                repo = TelegramUserRepository(self._session)
+                repo.ensure_owner(owner_id)
+            except Exception as exc:
+                logger.warning("Could not auto-provision owner: %s", exc)
+
+            if owner_id not in recipients:
+                recipients.append(owner_id)
+
+        return recipients
+
     def _notify(self, project: Project, analysis: AnalysisResult) -> dict[str, Any]:
         """Send a Telegram notification for a scored project."""
         if not self._notifier.enabled:
             return {"status": "skipped", "reason": "telegram_disabled"}
 
         try:
+            recipients = self._get_active_recipients()
             send_result = self._notifier.send_opportunity(
                 project_id=project.id,
                 title=project.title,
                 platform=project.platform.value,
                 url=project.url,
                 score=analysis.score,
+                confidence=analysis.confidence,
                 band=analysis.band.value
                 if isinstance(analysis.band, ScoreBand)
                 else str(analysis.band),
                 summary=analysis.summary,
+                rationale=analysis.rationale,
                 language=analysis.language,
+                recipients=recipients,
             )
 
             # Record notification in DB

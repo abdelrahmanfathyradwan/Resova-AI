@@ -58,30 +58,30 @@ tracks:
       - Technical Office
       - Production Engineering
       - Mechanical Engineering
-    # PROPOSED ONLY - the exact list sent to the client for approval (OQ-6).
+    # Approved Arabic keywords for matching
     keywords_ar_proposed:
       - text: مكافحة حريق
-        approved: false
+        approved: true
       - text: إنذار حريق
-        approved: false
+        approved: true
       - text: رش آلي
-        approved: false
+        approved: true
       - text: شبكة إطفاء
-        approved: false
+        approved: true
       - text: تكييف وتهوية
-        approved: false
+        approved: true
       - text: رسومات تنفيذية
-        approved: false
+        approved: true
       - text: شوب دروينج
-        approved: false
+        approved: true
       - text: أوتوكاد
-        approved: false
+        approved: true
       - text: حصر كميات
-        approved: false
+        approved: true
       - text: مقايسة
         approved: false
       - text: مضخات حريق
-        approved: false
+        approved: true
 
   - id: presentation_design
     label: Professional Presentation & Business Deck Design
@@ -102,16 +102,16 @@ tracks:
       - PDF to PowerPoint
       - Report Presentation
       - Infographic Slides
-    # PROPOSED ONLY - the exact list sent to the client for approval (OQ-6).
+    # Approved Arabic keywords for matching
     keywords_ar_proposed:
       - text: تصميم عرض تقديمي
-        approved: false
+        approved: true
       - text: بوربوينت
-        approved: false
+        approved: true
       - text: بروفايل شركة
-        approved: false
+        approved: true
       - text: عرض احترافي
-        approved: false
+        approved: true
 
   - id: cv_resume
     label: CV / Resume Writing & ATS Optimization
@@ -132,18 +132,18 @@ tracks:
       - Technical CV
       - Curriculum Vitae
       - Professional Bio
-    # PROPOSED ONLY - the exact list sent to the client for approval (OQ-6).
+    # Approved Arabic keywords for matching
     keywords_ar_proposed:
       - text: سيرة ذاتية
-        approved: false
+        approved: true
       - text: كتابة CV
-        approved: false
+        approved: true
       - text: تحسين السيرة الذاتية
-        approved: false
+        approved: true
       - text: لينكدإن
-        approved: false
+        approved: true
       - text: خطاب تقديم
-        approved: false
+        approved: true
 
 # Candidate tracks that exceed the written profile. NOT used by matching until the
 # client approves them (OQ-9).
@@ -191,11 +191,12 @@ unconfirmed_skills:
     confirmed: false
 
 settings:
-  min_match_score: 70
+  min_match_score: 45
   score_bands:
     strong: 85
     good: 70
-    weak: 50
+    moderate: 45
+    weak: 45
   notify_language: ar
   # TODO(client): keywords that must always disqualify a project (OQ-8).
   excluded_keywords: []

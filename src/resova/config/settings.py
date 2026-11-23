@@ -86,6 +86,7 @@ class Settings(BaseSettings):
     user_agent_contact: str = ""
     enable_mostaqel: bool = True
     enable_khamsat: bool = True
+    max_notification_age_hours: int = Field(default=48, ge=1)
     # ``off`` disables email polling entirely (dev/tests). Manual paste is a separate,
     # always-available channel handled by the Telegram bot (Phase 5), not a poll mode.
     email_poll_mode: Literal["polling", "off"] = "polling"
@@ -104,6 +105,16 @@ class Settings(BaseSettings):
     enable_telegram: bool = True
     telegram_bot_token: SecretStr | None = None
     telegram_allowed_user_id: int | None = None
+    telegram_owner_id: int | None = None
+
+    @property
+    def owner_chat_id(self) -> int | None:
+        """The trusted system owner ID."""
+        return (
+            self.telegram_owner_id
+            if self.telegram_owner_id is not None
+            else self.telegram_allowed_user_id
+        )
 
     @field_validator("mostaql_listing_urls", "khamsat_listing_urls", mode="before")
     @classmethod

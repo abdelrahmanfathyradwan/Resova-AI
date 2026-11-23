@@ -286,6 +286,14 @@ class PollerScheduler:
                                 proj.id,
                             )
 
+                # Flush any pending moderate digest notifications
+                digest_res = ingestion.flush_pending_digest()
+                if digest_res.get("count", 0) > 0:
+                    logger.info(
+                        "PollerScheduler: sent digest with %d moderate opportunity(ies)",
+                        digest_res["count"],
+                    )
+
                 sync_log.finished_at = utcnow()
                 session.commit()
                 logger.info("PollerScheduler: poll cycle completed successfully.")

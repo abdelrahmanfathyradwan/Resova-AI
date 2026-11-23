@@ -43,10 +43,11 @@ def test_shipped_profile_loads(profile: ClientProfile) -> None:
         "presentation_design",
         "cv_resume",
     }
-    assert profile.settings.min_match_score == 70
+    assert profile.settings.min_match_score == 45
     assert profile.settings.score_bands.strong == 85
     assert profile.settings.score_bands.good == 70
-    assert profile.settings.score_bands.weak == 50
+    assert profile.settings.score_bands.moderate == 45
+    assert profile.settings.score_bands.weak == 45
     assert profile.settings.notify_language == "ar"
     assert profile.settings.excluded_keywords == []
     assert profile.settings.min_budget is None
@@ -65,10 +66,14 @@ def test_titles_and_languages_present(profile: ClientProfile) -> None:
 def test_unapproved_arabic_keywords_are_excluded_from_matching(profile: ClientProfile) -> None:
     proposals = [item for track in profile.tracks for item in track.keywords_ar_proposed]
     assert proposals, "expected proposed Arabic keywords in the shipped profile"
-    assert all(item.approved is False for item in proposals)
+    unapproved = [item for item in proposals if not item.approved]
+    assert unapproved, "expected at least one unapproved keyword (e.g. مقايسة)"
     for track in profile.tracks:
-        assert track.approved_keywords_ar == []
-        assert track.match_keywords == track.keywords_en
+        unapproved_in_track = {
+            item.text.lower() for item in track.keywords_ar_proposed if not item.approved
+        }
+        for unapproved_kw in unapproved_in_track:
+            assert unapproved_kw not in [kw.lower() for kw in track.match_keywords]
 
 
 def test_approved_arabic_keyword_is_included_in_matching() -> None:
@@ -123,7 +128,12 @@ def test_threshold_change_alters_hash(profile: ClientProfile) -> None:
 
 def test_approving_arabic_keyword_alters_hash(profile: ClientProfile) -> None:
     data = _data(profile)
-    data["tracks"][0]["keywords_ar_proposed"][0]["approved"] = True
+    # Toggle an unapproved keyword (e.g. مقايسة which is the last in engineering track)
+    unapproved_idx = [
+        i for i, item in enumerate(data["tracks"][0]["keywords_ar_proposed"])
+        if not item["approved"]
+    ][0]
+    data["tracks"][0]["keywords_ar_proposed"][unapproved_idx]["approved"] = True
     other = ClientProfile.model_validate(data)
     assert other.content_hash() != profile.content_hash()
 
@@ -190,7 +200,11 @@ def test_match_keywords_uses_english_plus_approved_only(profile: ClientProfile) 
     mapping = profile.match_keywords()
     assert set(mapping) == {"engineering", "presentation_design", "cv_resume"}
     for track in profile.tracks:
-        assert mapping[track.id] == track.keywords_en
+        approved_ar = [
+            item.text for item in track.keywords_ar_proposed if item.approved
+        ]
+        expected = track.keywords_en + approved_ar
+        assert mapping[track.id] == expected
 
 
 def test_non_mapping_yaml_rejected(tmp_path: Path) -> None:

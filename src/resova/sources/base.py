@@ -60,6 +60,7 @@ class RawProject:
     url: str | None = None
     external_id: str | None = None
     published_at: datetime | None = None
+    last_activity_at: datetime | None = None
     #: Platform-specific leftovers kept for a later phase; never used for matching yet.
     extras: Mapping[str, object] = field(default_factory=dict)
 
