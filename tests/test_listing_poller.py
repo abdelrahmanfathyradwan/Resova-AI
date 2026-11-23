@@ -85,6 +85,26 @@ def test_khamsat_parser_extracts_fields() -> None:
     assert p.extras.get("category") == "هندسة وتصميم"
 
 
+def test_khamsat_parser_extracts_slug_id_without_data_id() -> None:
+    slug = "801117-اختبار-نظام-resova-ai-مطلوب-تصميم-شعار-بسيط"
+    html = f"""
+    <table>
+        <tr class="forum_post">
+            <td>
+                <a class="title" href="/community/requests/{slug}">
+                    اختبار نظام Resova AI – مطلوب تصميم شعار بسيط
+                </a>
+            </td>
+        </tr>
+    </table>
+    """
+    projects = _KhamsatParser.parse(html)
+    assert len(projects) == 1
+    p = projects[0]
+    assert p.external_id == "801117"
+    assert p.title == "اختبار نظام Resova AI – مطلوب تصميم شعار بسيط"
+
+
 def test_listing_poller_disabled_returns_empty() -> None:
     settings = Settings(
         _env_file=None,

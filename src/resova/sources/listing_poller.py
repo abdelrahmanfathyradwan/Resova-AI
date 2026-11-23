@@ -105,10 +105,14 @@ class _KhamsatParser:
             if id_attr := row.get("data-id"):
                 external_id = str(id_attr).strip()
             else:
-                for part in str(href).split("/"):
-                    if part.isdigit():
-                        external_id = part
-                        break
+                match = re.search(r"/requests?/(\d+)", str(href))
+                if match:
+                    external_id = match.group(1)
+                else:
+                    for part in str(href).split("/"):
+                        if m := re.search(r"^(\d+)", part):
+                            external_id = m.group(1)
+                            break
 
             title = link.get_text(strip=True) or None
             cat_el = row.select_one("td.category, span.category")
@@ -162,7 +166,7 @@ class ListingPoller(BaseSource):
             stmt = select(Project.url, Project.external_id, Project.platform)
             for url, ext_id, platform in self._session.execute(stmt):
                 if url:
-                    self._known_keys.add(f"url:{url}")
+                    self._known_keys.add(f"url:{normalize_url(url)}")
                 if ext_id:
                     self._known_keys.add(f"ext:{platform}:{ext_id}")
             self._baseline_done = True
@@ -290,14 +294,16 @@ class ListingPoller(BaseSource):
             collector.extend(projects)
 
     def _is_known(self, raw: RawProject) -> bool:
-        if raw.url and f"url:{raw.url}" in self._known_keys:
+        norm_url = normalize_url(raw.url) if raw.url else None
+        if norm_url and f"url:{norm_url}" in self._known_keys:
             return True
         key = f"ext:{raw.extras.get('platform')}:{raw.external_id}"
         return bool(raw.external_id and key in self._known_keys)
 
     def _record_known(self, raw: RawProject) -> None:
-        if raw.url:
-            self._known_keys.add(f"url:{raw.url}")
+        norm_url = normalize_url(raw.url) if raw.url else None
+        if norm_url:
+            self._known_keys.add(f"url:{norm_url}")
         if raw.external_id:
             self._known_keys.add(f"ext:{raw.extras.get('platform')}:{raw.external_id}")
 
