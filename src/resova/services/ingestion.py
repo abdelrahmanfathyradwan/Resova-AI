@@ -6,6 +6,7 @@ notification. Each step is independently testable.
 
 from __future__ import annotations
 
+import enum
 import logging
 from typing import Any
 
@@ -29,6 +30,12 @@ from resova.db.repositories import ProjectRepository, ProjectUpsert, UpsertOutco
 from resova.telegram.bot import TelegramNotifier
 
 logger = logging.getLogger(__name__)
+
+
+class FreshnessClassification(enum.StrEnum):
+    fresh_confirmed = "fresh_confirmed"
+    freshness_unverified = "freshness_unverified"
+    bumped_stale = "bumped_stale"
 
 
 class IngestionService:
@@ -124,6 +131,38 @@ class IngestionService:
 
         return result
 
+    def classify_freshness(
+        self, project: Project
+    ) -> tuple[FreshnessClassification, str]:
+        """Classify project freshness into fresh, unverified, or bumped stale."""
+        max_age = getattr(self._settings, "max_notification_age_hours", 48)
+
+        # 1. Authoritative date if published_at is present
+        if project.published_at is not None:
+            age_hours = (utcnow() - project.published_at).total_seconds() / 3600.0
+            if age_hours <= max_age:
+                return (
+                    FreshnessClassification.fresh_confirmed,
+                    f"published_within_{round(age_hours, 1)}h",
+                )
+            return (
+                FreshnessClassification.bumped_stale,
+                f"published_at_stale_{round(age_hours, 1)}h_exceeds_{max_age}h",
+            )
+
+        # 2. published_at is None (Unknown)
+        # Check if project has independent reliable proof of being an old topic
+        if (project.offers_count and project.offers_count > 3) or (
+            project.comments_count and project.comments_count > 3
+        ):
+            return FreshnessClassification.bumped_stale, "existing_comments_or_offers_signal_age"
+
+        # Without published_at, project freshness cannot be verified
+        return (
+            FreshnessClassification.freshness_unverified,
+            "unverified_publication_date",
+        )
+
     def _process_notification(self, project: Project, analysis: AnalysisResult) -> dict[str, Any]:
         """Process opportunity notification according to score thresholds and freshness."""
         min_score = self.profile.settings.min_match_score
@@ -142,48 +181,49 @@ class IngestionService:
             self._session.flush()
             return {"status": "skipped", "reason": "below_threshold"}
 
-        # Check freshness of publication date
-        if project.published_at is None:
-            logger.info("Project %d skipped: publication date unknown", project.id)
-            notification = Notification(
-                project_id=project.id,
-                channel="telegram",
-                status=NotificationStatus.skipped,
-                score=analysis.score,
-                sent_at=None,
-                error="publication_date_unknown",
-            )
-            self._session.add(notification)
-            self._session.flush()
-            return {"status": "skipped", "reason": "publication_date_unknown"}
+        # Classify freshness
+        classification, reason = self.classify_freshness(project)
 
-        # Calculate project age
-        age_hours = (utcnow() - project.published_at).total_seconds() / 3600.0
-        max_age = getattr(self._settings, "max_notification_age_hours", 48)
-        if age_hours > max_age:
-            logger.info(
-                "Project %d skipped: stale opportunity (age=%.1fh > max=%dh)",
-                project.id,
-                age_hours,
-                max_age,
-            )
+        if classification == FreshnessClassification.bumped_stale:
+            error_code = "bumped_stale" if project.last_activity_at else "stale_project_skipped"
+            logger.info("Project %d skipped: %s (%s)", project.id, error_code, reason)
             notification = Notification(
                 project_id=project.id,
                 channel="telegram",
                 status=NotificationStatus.skipped,
                 score=analysis.score,
                 sent_at=None,
-                error="stale_project_skipped",
+                error=error_code,
             )
             self._session.add(notification)
             self._session.flush()
             return {
                 "status": "skipped",
-                "reason": "stale_project_skipped",
-                "age_hours": round(age_hours, 1),
+                "reason": error_code,
+                "classification": FreshnessClassification.bumped_stale.value,
+                "details": reason,
             }
 
-        # Route by Score Band
+        if classification == FreshnessClassification.freshness_unverified:
+            logger.info("Project %d skipped: unverified publication date (%s)", project.id, reason)
+            notification = Notification(
+                project_id=project.id,
+                channel="telegram",
+                status=NotificationStatus.skipped,
+                score=analysis.score,
+                sent_at=None,
+                error="freshness_unverified",
+            )
+            self._session.add(notification)
+            self._session.flush()
+            return {
+                "status": "skipped",
+                "reason": "freshness_unverified",
+                "classification": FreshnessClassification.freshness_unverified.value,
+                "details": reason,
+            }
+
+        # Route by Score Band (fresh_confirmed only)
         # Strong (>=85) or Good (70-84): Immediate individual notification
         if analysis.score >= 70:
             return self._notify(project, analysis)
@@ -199,7 +239,11 @@ class IngestionService:
         )
         self._session.add(notification)
         self._session.flush()
-        return {"status": "pending_digest", "reason": "queued_for_digest"}
+        return {
+            "status": "pending_digest",
+            "reason": "queued_for_digest",
+            "classification": FreshnessClassification.fresh_confirmed.value,
+        }
 
     def flush_pending_digest(self) -> dict[str, Any]:
         """Send all pending moderate notifications as a single consolidated Telegram digest."""

@@ -42,7 +42,7 @@ from resova.db.models import (
     SourceKind,
 )
 from resova.db.repositories import ProjectUpsert
-from resova.services.ingestion import IngestionService
+from resova.services.ingestion import FreshnessClassification, IngestionService
 from resova.telegram.bot import TelegramNotifier
 
 
@@ -334,14 +334,14 @@ def test_bumped_project_uses_published_at_not_last_activity(
     )
     res = service.ingest_project(upsert)
     assert res["notification"]["status"] == "skipped"
-    assert res["notification"]["reason"] == "stale_project_skipped"
+    assert res["notification"]["reason"] in ("bumped_stale", "stale_project_skipped")
     assert notifier.send_opportunity.call_count == 0
 
 
-def test_unknown_publication_date_is_skipped(
+def test_unknown_date_always_classified_as_unverified(
     session: Session, app_settings: Settings
 ) -> None:
-    """Project with published_at=None is saved to DB but notification skipped."""
+    """Project with published_at=None is always freshness_unverified and skipped."""
     notifier = MagicMock(spec=TelegramNotifier)
     notifier.enabled = True
 
@@ -349,14 +349,78 @@ def test_unknown_publication_date_is_skipped(
     upsert = ProjectUpsert(
         platform=Platform.mostaql,
         source_kind=SourceKind.website_page,
-        title="تصميم شبكة إطفاء حريق معتمدة",
-        url="https://mostaql.com/project/unknown-date",
+        title="مطلوب مهندس مكافحة حريق وشبكة إطفاء ورش آلي",
+        description="مطلوب مهندس ميكانيكا لتصميم شبكة رش آلي وحسابات هيدروليكية ومضخات إطفاء حريق.",
+        url="https://mostaql.com/project/unknown-date-mostaql",
+        source_section="page:1:post_baseline",
         published_at=None,
     )
     res = service.ingest_project(upsert)
+    assert res["notification"] is not None
     assert res["notification"]["status"] == "skipped"
-    assert res["notification"]["reason"] == "publication_date_unknown"
+    assert res["notification"]["reason"] == "freshness_unverified"
     assert notifier.send_opportunity.call_count == 0
+
+    # Verify project is saved in database for archival
+    db_proj = session.query(Project).filter_by(url="https://mostaql.com/project/unknown-date-mostaql").one()
+    assert db_proj is not None
+    assert db_proj.published_at is None
+    assert db_proj.first_seen_at is not None
+
+
+def test_khamsat_with_activity_but_no_publish_date_is_unverified_not_stale(
+    session: Session, app_settings: Settings
+) -> None:
+    """Khamsat topic with activity but no published_at is unverified, not bumped_stale."""
+    notifier = MagicMock(spec=TelegramNotifier)
+    notifier.enabled = True
+
+    service = IngestionService(session, app_settings, notifier=notifier)
+    upsert = ProjectUpsert(
+        platform=Platform.khamsat,
+        source_kind=SourceKind.website_page,
+        title="تصميم شبكة إطفاء حريق حديثة",
+        description="مطلوب تصميم شبكة إطفاء وحسابات هيدروليكية.",
+        url="https://khamsat.com/community/requests/khamsat-activity-no-publish",
+        source_section="page:1",
+        published_at=None,
+        last_activity_at=utcnow(),
+    )
+    res = service.ingest_project(upsert)
+    assert res["notification"] is not None
+    assert res["notification"]["status"] == "skipped"
+    assert res["notification"]["reason"] == "freshness_unverified"
+    assert res["notification"]["classification"] == FreshnessClassification.freshness_unverified
+    assert notifier.send_opportunity.call_count == 0
+
+
+def test_new_page_discovered_with_unknown_date_is_unverified(
+    session: Session, app_settings: Settings
+) -> None:
+    """Project discovered on page 2 with unknown date is unverified and saved to DB."""
+    notifier = MagicMock(spec=TelegramNotifier)
+    notifier.enabled = True
+
+    service = IngestionService(session, app_settings, notifier=notifier)
+    upsert = ProjectUpsert(
+        platform=Platform.mostaql,
+        source_kind=SourceKind.website_page,
+        title="تصميم شبكة إطفاء في صفحة جديدة",
+        description="مطلوب مهندس متخصص في شبكات الإطفاء والإنذار ومضخات الحريق.",
+        url="https://mostaql.com/project/page2-unknown-date",
+        source_section="page:2:post_baseline",
+        published_at=None,
+    )
+    res = service.ingest_project(upsert)
+    assert res["notification"] is not None
+    assert res["notification"]["status"] == "skipped"
+    assert res["notification"]["reason"] == "freshness_unverified"
+    assert notifier.send_opportunity.call_count == 0
+
+    # Ensure saved to DB
+    proj = session.query(Project).filter_by(url="https://mostaql.com/project/page2-unknown-date").one()
+    assert proj is not None
+    assert proj.source_section == "page:2:post_baseline"
 
 
 # -----------------------------------------------------------------------------

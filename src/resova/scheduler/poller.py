@@ -257,13 +257,13 @@ class PollerScheduler:
                     return
 
                 logger.info(
-                    "PollerScheduler: discovered %d new project(s). Ingesting up to 5...",
+                    "PollerScheduler: discovered %d new project(s). Ingesting all...",
                     len(new_raw),
                 )
                 ingestion = IngestionService(session, self._settings)
                 proposal_svc = ProposalService(session, self._settings)
 
-                for raw in new_raw[:5]:
+                for raw in new_raw:
                     upsert_data = poller.normalize(raw)
                     if upsert_data is None:
                         continue

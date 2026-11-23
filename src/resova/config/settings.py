@@ -83,6 +83,7 @@ class Settings(BaseSettings):
     khamsat_listing_urls: Any = Field(default_factory=list)
     listing_poll_interval_seconds: int = Field(default=60, ge=60, le=3600)
     listing_poll_jitter_seconds: int = Field(default=10, ge=0)
+    max_poll_pages: int = Field(default=1, ge=1, le=5)
     user_agent_contact: str = ""
     enable_mostaqel: bool = True
     enable_khamsat: bool = True

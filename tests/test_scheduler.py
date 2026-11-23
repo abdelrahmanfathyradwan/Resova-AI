@@ -231,3 +231,51 @@ def test_poll_cycle_execution() -> None:
         assert len(projects) == 1
         assert projects[0].title == "تصميم شبكة حريق تجريبية"
 
+
+def test_scheduler_processes_all_discovered_projects_without_limit() -> None:
+    """PollerScheduler ingests all discovered projects without arbitrary 5-project limit."""
+    from unittest.mock import patch
+
+    from sqlalchemy.orm import sessionmaker
+
+    from resova.db.base import Base
+    from resova.db.models import Platform, Project, SourceKind
+    from resova.sources.base import RawProject
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    settings = Settings(
+        _env_file=None,
+        enable_email_ingestion=False,
+        enable_ai_analysis=False,
+        enable_telegram=False,
+        telegram_bot_token="123456:mock_token",
+        telegram_allowed_user_id=123456,
+        enable_listing_poller=True,
+        listing_poller_ack=True,
+        mostaql_listing_urls=["https://mostaql.com/projects"],
+    )
+
+    scheduler = PollerScheduler(settings, engine=engine)
+
+    raw_batch = [
+        RawProject(
+            source_kind=SourceKind.website_page,
+            title=f"مشروع رقم {i}",
+            description="وصف تجريبي لمشروع هندسي",
+            url=f"https://mostaql.com/project/{88000 + i}",
+            external_id=str(88000 + i),
+            extras={"category": "هندسة", "platform": Platform.mostaql},
+        )
+        for i in range(8)
+    ]
+
+    with patch("resova.sources.listing_poller.ListingPoller.fetch_new", return_value=raw_batch):
+        asyncio.run(scheduler._run_poll_cycle())
+
+    SessionLocal = sessionmaker(bind=engine)
+    with SessionLocal() as session:
+        projects = session.query(Project).all()
+        assert len(projects) == 8
+
