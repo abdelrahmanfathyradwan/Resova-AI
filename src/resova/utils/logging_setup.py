@@ -90,7 +90,13 @@ def configure_logging(
     root = logging.getLogger()
     root.setLevel(level)
 
-    if not any(getattr(handler, "_resova_redacting", False) for handler in root.handlers):
+    existing = [h for h in root.handlers if getattr(h, "_resova_redacting", False)]
+    if stream is not None and existing:
+        for h in existing:
+            root.removeHandler(h)
+        existing = []
+
+    if not existing:
         handler = logging.StreamHandler(stream or sys.stderr)
         handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s"))
         handler.addFilter(RedactionFilter(secrets))

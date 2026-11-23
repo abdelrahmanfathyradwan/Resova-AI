@@ -60,6 +60,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        if app_settings.app_env == "production":
+            from resova.utils.logging_setup import configure_logging
+
+            configure_logging(app_settings.log_level)
+
         app.state.engine = create_db_engine(app_settings.database_url)
         app.state.settings = app_settings
 
