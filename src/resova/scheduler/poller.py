@@ -169,6 +169,12 @@ class PollerScheduler:
 
     async def _poll_loop(self) -> None:
         """Main polling loop with distributed leader lock and jitter."""
+        # Initial brief pause to let server finish booting
+        try:
+            await asyncio.sleep(5)
+        except asyncio.CancelledError:
+            return
+
         while self._running:
             if not self._is_leader:
                 self._is_leader = self._try_acquire_leader_lock()
@@ -187,18 +193,23 @@ class PollerScheduler:
                     "PollerScheduler: acquired distributed lock. Active leader on this replica."
                 )
 
+            try:
+                await self._run_poll_cycle()
+            except Exception:
+                logger.exception("Poll cycle failed unexpectedly")
+
+            if not self._running:
+                break
+
             interval = self._settings.listing_poll_interval_seconds
             jitter = random.randint(0, self._settings.listing_poll_jitter_seconds)
             wait = interval + jitter
 
-            logger.debug("Next poll in %d seconds (interval=%d, jitter=%d)", wait, interval, jitter)
+            logger.info("PollerScheduler: sleeping %ds until next poll cycle...", wait)
 
             try:
                 await asyncio.sleep(wait)
             except asyncio.CancelledError:
-                break
-
-            if not self._running:
                 break
 
             # Verify lock is still active
@@ -207,27 +218,76 @@ class PollerScheduler:
                 self._release_leader_lock()
                 continue
 
-            try:
-                await self._run_poll_cycle()
-            except Exception:
-                logger.exception("Poll cycle failed unexpectedly")
-
     async def _run_poll_cycle(self) -> None:
-        """Execute one poll cycle.
+        """Execute one poll cycle across configured listing sources."""
+        logger.info("PollerScheduler: starting listing poll cycle...")
+        try:
+            from resova.db.base import utcnow
+            from resova.db.models import Platform, Project, SyncLog, SyncStatus
+            from resova.db.session import create_session_factory
+            from resova.services.ingestion import IngestionService
+            from resova.services.proposal import ProposalService
+            from resova.sources.listing_poller import ListingPoller
 
-        This method is intentionally a no-op skeleton that logs the cycle.
-        The actual HTTP fetching is handled by ListingPoller which is NOT
-        enabled by default. This prevents any unauthorized network requests.
+            engine = self._get_engine()
+            if engine is None:
+                logger.warning("PollerScheduler: no engine available for poll cycle")
+                return
 
-        When the listing poller is properly configured and authorized, this
-        method would:
-        1. Instantiate the ListingPoller
-        2. Call fetch_new() to get new projects
-        3. Normalize and ingest each project
-        4. Record the sync log
-        """
-        logger.info(
-            "Poll cycle triggered. Listing poller is configured but actual HTTP "
-            "requests require explicit setup of source connectors. "
-            "See docs/SOURCES.md for the authorized discovery channels."
-        )
+            session_factory = create_session_factory(engine)
+            with session_factory() as session:
+                start_time = utcnow()
+                poller = ListingPoller(settings=self._settings, session=session)
+                new_raw = poller.fetch_new()
+
+                sync_log = SyncLog(
+                    platform=Platform.mostaql,
+                    status=SyncStatus.success,
+                    started_at=start_time,
+                    finished_at=utcnow(),
+                    items_seen=len(poller._known_keys),
+                    items_new=len(new_raw),
+                    items_updated=0,
+                )
+                session.add(sync_log)
+
+                if not new_raw:
+                    logger.info("PollerScheduler: no new projects discovered in this cycle.")
+                    session.commit()
+                    return
+
+                logger.info(
+                    "PollerScheduler: discovered %d new project(s). Ingesting up to 5...",
+                    len(new_raw),
+                )
+                ingestion = IngestionService(session, self._settings)
+                proposal_svc = ProposalService(session, self._settings)
+
+                for raw in new_raw[:5]:
+                    upsert_data = poller.normalize(raw)
+                    if upsert_data is None:
+                        continue
+                    res = ingestion.ingest_project(upsert_data)
+                    logger.info(
+                        "PollerScheduler: ingested '%s' -> outcome=%s, score=%s",
+                        raw.title,
+                        res.get("outcome"),
+                        res.get("analysis", {}).get("score") if res.get("analysis") else None,
+                    )
+
+                    project_id = res.get("project_id")
+                    if project_id and res.get("analysis"):
+                        proj = session.query(Project).filter_by(id=project_id).first()
+                        if proj:
+                            draft = proposal_svc.generate_draft(proj, language="ar")
+                            logger.info(
+                                "PollerScheduler: proposal draft %d created for project %d",
+                                draft.id,
+                                proj.id,
+                            )
+
+                sync_log.finished_at = utcnow()
+                session.commit()
+                logger.info("PollerScheduler: poll cycle completed successfully.")
+        except Exception as exc:
+            logger.exception("PollerScheduler: poll cycle failed unexpectedly: %s", exc)

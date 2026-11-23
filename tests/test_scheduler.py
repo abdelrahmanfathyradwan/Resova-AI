@@ -176,3 +176,58 @@ def test_normalize_database_url_railway_compat() -> None:
     # Untouched if already postgresql or sqlite
     assert normalize_database_url(expected) == expected
     assert normalize_database_url("sqlite:///./resova.db") == "sqlite:///./resova.db"
+
+
+def test_poll_cycle_execution() -> None:
+    """_run_poll_cycle executes ListingPoller, creates SyncLog, and ingests projects."""
+    from unittest.mock import patch
+
+    from sqlalchemy.orm import sessionmaker
+
+    from resova.db.base import Base
+    from resova.db.models import Platform, Project, SourceKind, SyncLog, SyncStatus
+    from resova.sources.base import RawProject
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    settings = Settings(
+        _env_file=None,
+        enable_email_ingestion=False,
+        enable_ai_analysis=False,
+        enable_telegram=False,
+        telegram_bot_token="123456:mock_token",
+        telegram_allowed_user_id=123456,
+        enable_listing_poller=True,
+        listing_poller_ack=True,
+        mostaql_listing_urls=["https://mostaql.com/projects"],
+    )
+
+    scheduler = PollerScheduler(settings, engine=engine)
+
+    raw_sample = [
+        RawProject(
+            source_kind=SourceKind.website_page,
+            title="تصميم شبكة حريق تجريبية",
+            description="مطلوب مهندس لحسابات وتصميم شبكة إطفاء الحريق والإنذار.",
+            url="https://mostaql.com/project/777123-fire-test",
+            external_id="777123",
+            extras={"category": "هندسة", "platform": Platform.mostaql},
+        )
+    ]
+
+    with patch("resova.sources.listing_poller.ListingPoller.fetch_new", return_value=raw_sample):
+        asyncio.run(scheduler._run_poll_cycle())
+
+    # Verify SyncLog and Project created in database
+    SessionLocal = sessionmaker(bind=engine)
+    with SessionLocal() as session:
+        sync_logs = session.query(SyncLog).all()
+        assert len(sync_logs) == 1
+        assert sync_logs[0].status == SyncStatus.success
+        assert sync_logs[0].items_new == 1
+
+        projects = session.query(Project).all()
+        assert len(projects) == 1
+        assert projects[0].title == "تصميم شبكة حريق تجريبية"
+
