@@ -9,12 +9,45 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import quote, urlsplit, urlunsplit
 
 from resova.config.settings import Settings
 from resova.db.models import NotificationStatus
 from resova.utils.errors import TelegramError
 
 logger = logging.getLogger(__name__)
+
+
+def _to_clickable_url(url: str | None, platform: str | None = None) -> str | None:
+    """Ensure a URL is absolute, canonical, and properly percent-encoded for Telegram."""
+    if not url:
+        return None
+    raw = str(url).strip()
+    if not raw:
+        return None
+
+    # Resolve relative paths using platform base URL
+    if raw.startswith("/"):
+        plat_str = str(platform).lower() if platform else ""
+        raw = f"https://mostaql.com{raw}" if "mostaql" in plat_str else f"https://khamsat.com{raw}"
+    elif not raw.startswith("http://") and not raw.startswith("https://"):
+        plat_str = str(platform).lower() if platform else ""
+        prefix = "https://mostaql.com/" if "mostaql" in plat_str else "https://khamsat.com/"
+        raw = f"{prefix}{raw.lstrip('/')}"
+
+    try:
+        parts = urlsplit(raw)
+        quoted_path = quote(parts.path, safe="/:@!$&'()*+,;=-_.~")
+        quoted_query = quote(parts.query, safe="=&?/:@!$'()*+,;=-_.~")
+        return urlunsplit((
+            parts.scheme or "https",
+            parts.netloc,
+            quoted_path,
+            quoted_query,
+            parts.fragment,
+        ))
+    except Exception:
+        return raw
 
 
 def _format_opportunity_message(
@@ -38,6 +71,8 @@ def _format_opportunity_message(
     else:
         badge = "🔵 *فرصة واعدة*"
 
+    clean_url = _to_clickable_url(url, platform)
+
     if language == "ar":
         lines = [
             "🔔 *فرصة جديدة*",
@@ -49,8 +84,9 @@ def _format_opportunity_message(
         ]
         if confidence is not None:
             lines.append(f"🎯 *درجة الثقة:* {int(confidence * 100)}%")
-        if url:
-            lines.append(f"🔗 *الرابط:* {url}")
+        if clean_url:
+            platform_display = "خمسات" if "khamsat" in str(platform).lower() else "مستقل"
+            lines.append(f"🔗 *الرابط:* [{platform_display} — اضغط هنا لفتح المشروع]({clean_url})")
         if rationale:
             lines.append("")
             lines.append(f"💡 *سبب المطابقة:* {_escape_md(rationale)}")
@@ -74,8 +110,9 @@ def _format_opportunity_message(
         ]
         if confidence is not None:
             lines.append(f"🎯 *Confidence:* {int(confidence * 100)}%")
-        if url:
-            lines.append(f"🔗 *Link:* {url}")
+        if clean_url:
+            platform_display = "Khamsat" if "khamsat" in str(platform).lower() else "Mostaql"
+            lines.append(f"🔗 *Link:* [Open on {platform_display}]({clean_url})")
         if rationale:
             lines.append("")
             lines.append(f"💡 *Rationale:* {_escape_md(rationale)}")
@@ -185,6 +222,21 @@ class TelegramNotifier:
             language=language,
         )
 
+        clean_url = _to_clickable_url(url, platform)
+        reply_markup = None
+        if clean_url:
+            platform_display = "خمسات" if "khamsat" in str(platform).lower() else "مستقل"
+            reply_markup = {
+                "inline_keyboard": [
+                    [
+                        {
+                            "text": f"🔗 فتح المشروع على {platform_display}",
+                            "url": clean_url,
+                        }
+                    ]
+                ]
+            }
+
         recipient_list = list(dict.fromkeys(recipients or [self._settings.owner_chat_id]))
         recipient_list = [cid for cid in recipient_list if cid is not None]
 
@@ -194,7 +246,7 @@ class TelegramNotifier:
 
         for cid in recipient_list:
             try:
-                res = self._send_message(message, chat_id=cid)
+                res = self._send_message(message, chat_id=cid, reply_markup=reply_markup)
                 sent_count += 1
                 if first_msg_id is None:
                     first_msg_id = res.get("message_id")
@@ -238,8 +290,9 @@ class TelegramNotifier:
             score = item.get("score", 0)
             url = item.get("url")
             platform = item.get("platform", "")
-            if url:
-                lines.append(f"{i}\\. [{title}]({url}) — *{score}/100* ({platform})")
+            clean_url = _to_clickable_url(url, platform)
+            if clean_url:
+                lines.append(f"{i}\\. [{title}]({clean_url}) — *{score}/100* ({platform})")
             else:
                 lines.append(f"{i}\\. {title} — *{score}/100* ({platform})")
 

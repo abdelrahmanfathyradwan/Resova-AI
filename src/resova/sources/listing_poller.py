@@ -129,12 +129,20 @@ class _MostaqlParser:
                 if not published_at:
                     published_at = _parse_relative_arabic_date(time_el.get_text(strip=True))
 
+            href_str = str(href).strip()
+            if href_str.startswith("/"):
+                project_url = f"https://mostaql.com{href_str}"
+            elif not href_str.startswith("http"):
+                project_url = f"https://mostaql.com/{href_str.lstrip('/')}"
+            else:
+                project_url = href_str
+
             projects.append(
                 RawProject(
                     source_kind=SourceKind.website_page,
                     title=title,
                     description=description,
-                    url=str(href),
+                    url=project_url,
                     external_id=external_id,
                     published_at=published_at,
                     extras={"category": category, "platform": Platform.mostaql},
@@ -194,12 +202,20 @@ class _KhamsatParser:
                     if not published_at:
                         published_at = _parse_relative_arabic_date(txt)
 
+            href_str = str(href).strip()
+            if href_str.startswith("/"):
+                project_url = f"https://khamsat.com{href_str}"
+            elif not href_str.startswith("http"):
+                project_url = f"https://khamsat.com/{href_str.lstrip('/')}"
+            else:
+                project_url = href_str
+
             projects.append(
                 RawProject(
                     source_kind=SourceKind.website_page,
                     title=title,
                     description=description,
-                    url=str(href),
+                    url=project_url,
                     external_id=external_id,
                     published_at=published_at,
                     last_activity_at=last_activity_at,
@@ -397,11 +413,23 @@ class ListingPoller(BaseSource):
         else:
             platform = Platform.manual
 
+        url_val = raw.url
+        if url_val:
+            url_str = str(url_val).strip()
+            if url_str.startswith("/"):
+                if platform == Platform.khamsat:
+                    url_str = f"https://khamsat.com{url_str}"
+                elif platform == Platform.mostaql:
+                    url_str = f"https://mostaql.com{url_str}"
+            norm_url = normalize_url(url_str)
+        else:
+            norm_url = None
+
         return ProjectUpsert(
             platform=platform,
             source_kind=raw.source_kind,
             external_id=raw.external_id,
-            url=normalize_url(raw.url),
+            url=norm_url,
             title=raw.title,
             description=raw.description,
             category=raw.extras.get("category"),

@@ -153,3 +153,51 @@ def test_send_opportunity_disabled_raises(disabled_tg_settings: Settings) -> Non
             score=70,
             band="good",
         )
+
+
+def test_clickable_url_resolution_and_button(tg_settings: Settings) -> None:
+    from resova.telegram.bot import _to_clickable_url
+
+    # Relative Khamsat path with Arabic characters
+    rel_khamsat = "/community/requests/801118-مطلوب-مهندس-تصميم-نظام-مكافحة-حريق-وإعداد-shop-dra"
+    res_khamsat = _to_clickable_url(rel_khamsat, platform="khamsat")
+    assert res_khamsat is not None
+    assert res_khamsat.startswith("https://khamsat.com/community/requests/801118-")
+    assert "%D9%85" in res_khamsat  # Percent-encoded Arabic for clickable link
+
+    # Relative Mostaql path
+    rel_mostaql = "/project/12345-fire-network"
+    res_mostaql = _to_clickable_url(rel_mostaql, platform="mostaql")
+    assert res_mostaql == "https://mostaql.com/project/12345-fire-network"
+
+    # Notification message includes clickable markdown link
+    msg = _format_opportunity_message(
+        title="مطلوب مهندس إطفاء",
+        platform="khamsat",
+        url=rel_khamsat,
+        score=90,
+        band="strong",
+    )
+    assert "[خمسات — اضغط هنا لفتح المشروع](" in msg
+
+    # send_opportunity attaches Inline Keyboard Button
+    notifier = TelegramNotifier(tg_settings)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"ok": True, "result": {"message_id": 888}}
+
+    with patch("httpx.Client.post", return_value=mock_resp) as mock_post:
+        res = notifier.send_opportunity(
+            project_id=801118,
+            title="مطلوب مهندس",
+            platform="khamsat",
+            url=rel_khamsat,
+            score=90,
+            band="strong",
+        )
+        assert res["status"] == NotificationStatus.sent
+        payload = mock_post.call_args[1]["json"]
+        assert "reply_markup" in payload
+        button = payload["reply_markup"]["inline_keyboard"][0][0]
+        assert "فتح المشروع على خمسات" in button["text"]
+        assert button["url"] == res_khamsat
