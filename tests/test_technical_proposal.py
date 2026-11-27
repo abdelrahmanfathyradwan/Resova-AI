@@ -488,3 +488,207 @@ def test_dashboard_and_rest_api_flow_and_isolation(
     assert client.get(f"/api/proposals/{draft_id}").status_code == 403
     assert client.get(f"/api/proposals/{draft_id}/pdf").status_code == 403
     assert client.delete(f"/api/proposals/{draft_id}").status_code == 403
+    assert client.get(f"/dashboard/proposals/{draft_id}").status_code == 403
+
+
+def test_telegram_notification_sent_with_open_button_and_owner_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from resova.telegram.bot import TelegramNotifier
+
+    db_url = f"sqlite:///{(tmp_path / 'tg-notif.db').as_posix()}"
+    settings = Settings(
+        _env_file=None,
+        database_url=db_url,
+        enable_email_ingestion=False,
+        enable_ai_analysis=False,
+        enable_telegram=True,
+        telegram_bot_token="987654:SECRET-BOT-TOKEN",
+        telegram_allowed_user_id=777001,
+        telegram_owner_id=777001,
+        public_base_url="https://resova-production.up.railway.app",
+    )
+    eng = create_db_engine(db_url)
+    Base.metadata.create_all(eng)
+    factory = create_session_factory(eng)
+    with factory() as sess:
+        ua = TelegramUser(
+            telegram_chat_id=777001,
+            username="tg_owner",
+            first_name="مهندس",
+            role=TelegramUserRole.owner,
+            status=TelegramUserStatus.active,
+        )
+        proj = Project(
+            platform=Platform.mostaql,
+            source_kind=SourceKind.manual_paste,
+            title="تصميم مخططات تكييف",
+            description="مشروع تكييف مركزي",
+        )
+        sess.add_all([ua, proj])
+        sess.commit()
+        ua_chat, proj_id = ua.telegram_chat_id, proj.id
+    eng.dispose()
+
+    sent_calls: list[dict[str, object]] = []
+
+    def fake_send_message(
+        self: TelegramNotifier,
+        text: str,
+        chat_id: int | None = None,
+        reply_markup: dict[str, object] | None = None,
+        parse_mode: str | None = "Markdown",
+    ) -> dict[str, object]:
+        sent_calls.append(
+            {
+                "text": text,
+                "chat_id": chat_id,
+                "reply_markup": reply_markup,
+                "parse_mode": parse_mode,
+            }
+        )
+        return {"message_id": 4242, "ok": True}
+
+    monkeypatch.setattr(TelegramNotifier, "_send_message", fake_send_message)
+
+    app = create_app(settings)
+    with TestClient(app) as client:
+        code_a = compute_access_code(ua_chat, settings)
+        client.post("/dashboard/login", data={"chat_id": ua_chat, "access_code": code_a})
+        res = client.post(f"/api/projects/{proj_id}/technical-proposals", json={})
+        assert res.status_code == 201
+        body = res.json()
+        draft_id = body["id"]
+        assert body["telegram_notified"] is True
+        assert body["telegram_warning"] is None
+
+        assert len(sent_calls) == 1
+        call = sent_calls[0]
+        assert call["chat_id"] == ua_chat
+        assert "تم إنشاء مسودتك الفنية بنجاح" in str(call["text"])
+        assert "تصميم مخططات تكييف" in str(call["text"])
+        kb = call["reply_markup"]["inline_keyboard"]  # type: ignore[index]
+        assert kb[0][0]["text"] == "📄 فتح العرض الفني"
+        expected_url = f"https://resova-production.up.railway.app/dashboard/proposals/{draft_id}"
+        assert kb[0][0]["url"] == expected_url
+        assert "SECRET-BOT-TOKEN" not in expected_url
+
+        # Owner can open the dashboard proposal page
+        page = client.get(f"/dashboard/proposals/{draft_id}")
+        assert page.status_code == 200
+        assert "محرر العرض الفني" in page.text
+
+
+def test_telegram_notification_failure_and_unlinked_user_keep_draft(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from resova.telegram.bot import TelegramNotifier
+    from resova.utils.errors import TelegramError
+
+    db_url = f"sqlite:///{(tmp_path / 'tg-fail.db').as_posix()}"
+    settings = Settings(
+        _env_file=None,
+        database_url=db_url,
+        enable_email_ingestion=False,
+        enable_ai_analysis=False,
+        enable_telegram=True,
+        telegram_bot_token="987654:SECRET-BOT-TOKEN",
+        telegram_allowed_user_id=777002,
+        telegram_owner_id=777002,
+    )
+    eng = create_db_engine(db_url)
+    Base.metadata.create_all(eng)
+    factory = create_session_factory(eng)
+    with factory() as sess:
+        ua = TelegramUser(
+            telegram_chat_id=777002,
+            username="tg_fail_u",
+            first_name="مستخدم",
+            role=TelegramUserRole.owner,
+            status=TelegramUserStatus.active,
+        )
+        proj = Project(
+            platform=Platform.mostaql,
+            source_kind=SourceKind.manual_paste,
+            title="مشروع اختبار فشل تيليجرام",
+            description="وصف المشروع",
+        )
+        sess.add_all([ua, proj])
+        sess.commit()
+        ua_chat, proj_id = ua.telegram_chat_id, proj.id
+    eng.dispose()
+
+    def failing_send(*_args: object, **_kwargs: object) -> dict[str, object]:
+        raise TelegramError("Simulated network failure")
+
+    monkeypatch.setattr(TelegramNotifier, "_send_message", failing_send)
+
+    app = create_app(settings)
+    with TestClient(app) as client:
+        code_a = compute_access_code(ua_chat, settings)
+        client.post("/dashboard/login", data={"chat_id": ua_chat, "access_code": code_a})
+        res = client.post(f"/api/projects/{proj_id}/technical-proposals", json={})
+        assert res.status_code == 201
+        body = res.json()
+        assert body["telegram_notified"] is False
+        assert body["telegram_warning"]
+        # Draft is persisted despite Telegram failure
+        assert client.get(f"/api/proposals/{body['id']}").status_code == 200
+
+
+def test_telegram_proposal_notification_retries_and_no_duplicates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from resova.telegram.bot import TelegramNotifier
+    from resova.utils.errors import TelegramError
+
+    settings = Settings(
+        _env_file=None,
+        enable_email_ingestion=False,
+        enable_ai_analysis=False,
+        enable_telegram=True,
+        telegram_bot_token="987654:SECRET-BOT-TOKEN",
+        telegram_allowed_user_id=777003,
+        telegram_owner_id=777003,
+    )
+    notifier = TelegramNotifier(settings)
+    attempts = 0
+
+    def flaky_send(
+        self: TelegramNotifier,
+        text: str,
+        chat_id: int | None = None,
+        reply_markup: dict[str, object] | None = None,
+        parse_mode: str | None = "Markdown",
+    ) -> dict[str, object]:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise TelegramError("Transient 502")
+        return {"message_id": 999, "ok": True}
+
+    monkeypatch.setattr(TelegramNotifier, "_send_message", flaky_send)
+
+    first = notifier.send_proposal_created_notification(
+        chat_id=777003,
+        draft_id=123,
+        project_title="مشروع",
+        proposal_title="عرض",
+        proposal_url="https://resova-production.up.railway.app/dashboard/proposals/123",
+    )
+    assert first["sent"] is True
+    assert first["duplicate"] is False
+    assert attempts == 2
+
+    # Second call for the same draft_id must not send duplicate message
+    second = notifier.send_proposal_created_notification(
+        chat_id=777003,
+        draft_id=123,
+        project_title="مشروع",
+        proposal_title="عرض",
+        proposal_url="https://resova-production.up.railway.app/dashboard/proposals/123",
+    )
+    assert second["duplicate"] is True
+    assert attempts == 2

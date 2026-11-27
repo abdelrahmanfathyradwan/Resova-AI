@@ -33,7 +33,8 @@ from resova.services.technical_proposal import (
     TechnicalProposalService,
     UserProfessionalProfileData,
 )
-from resova.utils.errors import AIError
+from resova.telegram.bot import TelegramNotifier
+from resova.utils.errors import AIError, TelegramError
 
 logger = logging.getLogger(__name__)
 
@@ -267,7 +268,48 @@ def api_generate_technical_proposal(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=str(exc),
         ) from exc
-    return _serialize_draft(draft, svc)
+
+    db.commit()
+    db.refresh(draft)
+
+    settings: Settings = request.app.state.settings
+    telegram_notified = False
+    telegram_warning: str | None = None
+
+    chat_id = current_user.telegram_chat_id
+    if not chat_id or chat_id <= 0:
+        telegram_warning = "لم يتم إرسال إشعار Telegram لعدم وجود ربط مع حساب Telegram."
+    elif not settings.enable_telegram or settings.telegram_bot_token is None:
+        telegram_warning = "تم حفظ المسودة بنجاح، وإشعارات Telegram غير مفعّلة حاليًا."
+    else:
+        project = db.query(Project).filter_by(id=draft.project_id).first()
+        project_title = project.title if project else f"مشروع #{draft.project_id}"
+        proposal_title = draft.title or f"عرض فني v{draft.version}"
+        base_url = settings.public_base_url.rstrip("/")
+        proposal_url = f"{base_url}/dashboard/proposals/{draft.id}"
+        try:
+            notifier = TelegramNotifier(settings)
+            notifier.send_proposal_created_notification(
+                chat_id=chat_id,
+                draft_id=draft.id,
+                project_title=project_title,
+                proposal_title=proposal_title,
+                proposal_url=proposal_url,
+            )
+            telegram_notified = True
+        except (TelegramError, Exception) as exc:
+            logger.warning(
+                "Proposal %d saved but Telegram notification failed for user %d: %s",
+                draft.id,
+                current_user.id,
+                exc,
+            )
+            telegram_warning = "تم حفظ المسودة بنجاح، لكن تعذر إرسال إشعار Telegram حاليًا."
+
+    result = _serialize_draft(draft, svc)
+    result["telegram_notified"] = telegram_notified
+    result["telegram_warning"] = telegram_warning
+    return result
 
 
 @router.get("/api/projects/{project_id}/technical-proposals")
@@ -769,7 +811,10 @@ def dashboard_project_detail_page(
         }});
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'تعذر إنشاء العرض الفني');
-        window.location.href = `/dashboard/proposals/${{data.id}}`;
+        const warnQ = data.telegram_warning
+          ? `?tg_warn=${{encodeURIComponent(data.telegram_warning)}}`
+          : '';
+        window.location.href = `/dashboard/proposals/${{data.id}}${{warnQ}}`;
       }} catch (e) {{
         errBox.textContent = e.message;
         errBox.style.display = 'block';
@@ -832,7 +877,14 @@ def dashboard_proposal_editor_page(
     )
 
     proj_title_html = html.escape(project.title if project else "")
+    tg_warn_param = request.query_params.get("tg_warn")
+    tg_warn_html = (
+        f'<div class="alert alert-err" style="display:block;">{html.escape(tg_warn_param)}</div>'
+        if tg_warn_param
+        else ""
+    )
     body = f"""
+    {tg_warn_html}
     <div id="err-box" class="alert alert-err"></div>
     <div id="ok-box" class="alert alert-ok"></div>
     <div class="card">

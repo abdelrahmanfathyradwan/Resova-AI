@@ -165,6 +165,7 @@ class TelegramNotifier:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._sent_project_ids: set[int] = set()
+        self._sent_proposal_draft_ids: set[int] = set()
 
     @property
     def enabled(self) -> bool:
@@ -332,6 +333,7 @@ class TelegramNotifier:
         text: str,
         chat_id: int | None = None,
         reply_markup: dict[str, Any] | None = None,
+        parse_mode: str | None = "Markdown",
     ) -> dict[str, Any]:
         """Send a message via Telegram Bot API."""
         import httpx
@@ -344,13 +346,15 @@ class TelegramNotifier:
         if target_chat_id is None:
             raise TelegramError("Target chat_id is not specified and owner_chat_id is unset")
 
-        api_url = f"https://api.telegram.org/bot{token.get_secret_value()}/sendMessage"
+        secret_val = token.get_secret_value()
+        api_url = f"https://api.telegram.org/bot{secret_val}/sendMessage"
         payload: dict[str, Any] = {
             "chat_id": target_chat_id,
             "text": text,
-            "parse_mode": "Markdown",
             "disable_web_page_preview": True,
         }
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
         if reply_markup is not None:
             payload["reply_markup"] = reply_markup
 
@@ -370,7 +374,76 @@ class TelegramNotifier:
                     "ok": True,
                 }
         except httpx.HTTPError as exc:
-            raise TelegramError(f"HTTP error sending Telegram message: {exc}") from exc
+            safe_msg = str(exc).replace(secret_val, "***")
+            raise TelegramError(f"HTTP error sending Telegram message: {safe_msg}") from exc
+
+    def send_proposal_created_notification(
+        self,
+        *,
+        chat_id: int,
+        draft_id: int,
+        project_title: str,
+        proposal_title: str,
+        proposal_url: str,
+        max_retries: int = 2,
+    ) -> dict[str, Any]:
+        """Notify the proposal owner on Telegram with a direct link button.
+
+        Uses bounded retries and per-draft deduplication. Never exposes tokens.
+        """
+        if not self._settings.enable_telegram or self._settings.telegram_bot_token is None:
+            raise TelegramError("Telegram notifications are not configured")
+        if chat_id <= 0:
+            raise TelegramError("Invalid target Telegram chat_id")
+
+        if draft_id in self._sent_proposal_draft_ids:
+            logger.info("Skipping duplicate proposal notification for draft %d", draft_id)
+            return {"sent": True, "message_id": None, "duplicate": True, "error": None}
+
+        message = (
+            "🎉 تم إنشاء مسودتك الفنية بنجاح!\n\n"
+            f"📌 المشروع: {project_title}\n"
+            f"📄 العرض: {proposal_title}\n\n"
+            "يمكنك الآن فتح العرض ومراجعته وتعديل أقسامه وتصديره PDF."
+        )
+        reply_markup = {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": "📄 فتح العرض الفني",
+                        "url": proposal_url,
+                    }
+                ]
+            ]
+        }
+
+        last_error: str | None = None
+        for attempt in range(max_retries + 1):
+            try:
+                res = self._send_message(
+                    text=message,
+                    chat_id=chat_id,
+                    reply_markup=reply_markup,
+                    parse_mode=None,
+                )
+                self._sent_proposal_draft_ids.add(draft_id)
+                return {
+                    "sent": True,
+                    "message_id": res.get("message_id"),
+                    "duplicate": False,
+                    "error": None,
+                }
+            except TelegramError as exc:
+                last_error = str(exc)
+                logger.warning(
+                    "Attempt %d/%d failed sending proposal notification for draft %d: %s",
+                    attempt + 1,
+                    max_retries + 1,
+                    draft_id,
+                    last_error,
+                )
+
+        raise TelegramError(last_error or "Failed to send proposal notification")
 
     def send_message_with_keyboard(
         self,

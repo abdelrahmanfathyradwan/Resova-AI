@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     # --- Application ---
     app_env: Literal["development", "production", "test"] = "development"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    public_base_url: str = "https://resova-production.up.railway.app"
 
     # --- Database ---
     database_url: str = "sqlite:///./resova.db"
