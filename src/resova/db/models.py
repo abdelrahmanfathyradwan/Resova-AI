@@ -422,3 +422,23 @@ class AutoProposalJob(Base, TimestampMixin):
     telegram_notified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ProposalAccessToken(Base, TimestampMixin):
+    """Signed/hashed time-limited token for direct Telegram-to-proposal access."""
+
+    __tablename__ = "proposal_access_tokens"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_hash: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, nullable=False
+    )
+    proposal_id: Mapped[int] = mapped_column(
+        ForeignKey("proposal_drafts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    owner_user_id: Mapped[int] = mapped_column(
+        ForeignKey("telegram_users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

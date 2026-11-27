@@ -570,9 +570,12 @@ def test_telegram_notification_sent_with_open_button_and_owner_access(
         assert "تصميم مخططات تكييف" in str(call["text"])
         kb = call["reply_markup"]["inline_keyboard"]  # type: ignore[index]
         assert kb[0][0]["text"] == "📄 فتح العرض الفني"
-        expected_url = f"https://resova-production.up.railway.app/dashboard/proposals/{draft_id}"
-        assert kb[0][0]["url"] == expected_url
-        assert "SECRET-BOT-TOKEN" not in expected_url
+        button_url = str(kb[0][0]["url"])
+        assert button_url.startswith(
+            "https://resova-production.up.railway.app/proposal-access/"
+        )
+        assert f"/dashboard/proposals/{draft_id}" not in button_url
+        assert "SECRET-BOT-TOKEN" not in button_url
 
         # Owner can open the dashboard proposal page
         page = client.get(f"/dashboard/proposals/{draft_id}")

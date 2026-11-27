@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     app_env: Literal["development", "production", "test"] = "development"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     public_base_url: str = "https://resova-production.up.railway.app"
+    proposal_access_token_ttl_days: int = Field(default=7, ge=1, le=90)
 
     # --- Database ---
     database_url: str = "sqlite:///./resova.db"

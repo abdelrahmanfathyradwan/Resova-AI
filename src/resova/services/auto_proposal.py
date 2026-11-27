@@ -26,6 +26,7 @@ from resova.db.models import (
     TelegramUserStatus,
 )
 from resova.db.repositories import TelegramUserRepository
+from resova.services.proposal_access import create_proposal_access_token
 from resova.services.technical_proposal import TechnicalProposalService
 from resova.telegram.bot import TelegramNotifier
 from resova.utils.errors import AIError, TelegramError
@@ -209,7 +210,14 @@ def process_next_pending_job(
             and not job.telegram_notified
         ):
             base_url = settings.public_base_url.rstrip("/")
-            proposal_url = f"{base_url}/dashboard/proposals/{draft.id}"
+            raw_token, _ = create_proposal_access_token(
+                session,
+                proposal_id=draft.id,
+                owner_user_id=owner_user_id,
+                settings=settings,
+            )
+            session.commit()
+            proposal_url = f"{base_url}/proposal-access/{raw_token}"
             project_title = project.title if project else f"مشروع #{project_id}"
             proposal_title = draft.title or f"عرض فني v{draft.version}"
             try:

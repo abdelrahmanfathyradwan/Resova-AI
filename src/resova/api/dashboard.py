@@ -6,6 +6,8 @@ import hashlib
 import hmac
 import html
 import logging
+import time
+from datetime import UTC
 from typing import Annotated, Any
 from urllib.parse import parse_qs
 
@@ -30,6 +32,11 @@ from resova.db.models import (
 from resova.db.repositories import TelegramUserRepository
 from resova.db.session import create_session_factory
 from resova.services.pdf_exporter import export_proposal_pdf
+from resova.services.proposal_access import (
+    create_proposal_access_token,
+    proposal_access_rate_limiter,
+    verify_proposal_access_token,
+)
 from resova.services.technical_proposal import (
     SECTION_KEYS,
     SECTION_LABELS_AR,
@@ -43,6 +50,7 @@ from resova.utils.errors import AIError, TelegramError
 logger = logging.getLogger(__name__)
 
 SESSION_COOKIE_NAME = "resova_session"
+PROPOSAL_SCOPE_COOKIE_NAME = "resova_proposal_scope"
 
 router = APIRouter()
 
@@ -146,6 +154,93 @@ def _try_get_dashboard_user(request: Request, db: Session) -> TelegramUser | Non
         return get_current_user(request, db)
     except HTTPException:
         return None
+
+
+def sign_proposal_scope_value(
+    user_id: int,
+    chat_id: int,
+    proposal_id: int,
+    exp_ts: int,
+    settings: Settings,
+) -> str:
+    payload = f"{user_id}:{chat_id}:{proposal_id}:{exp_ts}"
+    sig = hmac.new(_signing_key(settings), payload.encode(), hashlib.sha256).hexdigest()
+    return f"{payload}:{sig}"
+
+
+def verify_proposal_scope_value(
+    cookie_val: str | None,
+    settings: Settings,
+) -> tuple[int, int, int, int] | None:
+    if not cookie_val:
+        return None
+    parts = cookie_val.split(":")
+    if len(parts) != 5:
+        return None
+    user_id_str, chat_id_str, proposal_id_str, exp_ts_str, sig = parts
+    try:
+        user_id = int(user_id_str)
+        chat_id = int(chat_id_str)
+        proposal_id = int(proposal_id_str)
+        exp_ts = int(exp_ts_str)
+    except ValueError:
+        return None
+    expected = hmac.new(
+        _signing_key(settings),
+        f"{user_id}:{chat_id}:{proposal_id}:{exp_ts}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(sig, expected):
+        return None
+    if exp_ts <= int(time.time()):
+        return None
+    return user_id, chat_id, proposal_id, exp_ts
+
+
+def _resolve_proposal_scoped_user(
+    request: Request,
+    db: Session,
+) -> tuple[TelegramUser, int] | None:
+    settings: Settings = request.app.state.settings
+    parsed = verify_proposal_scope_value(
+        request.cookies.get(PROPOSAL_SCOPE_COOKIE_NAME), settings
+    )
+    if parsed is None:
+        return None
+    user_id, chat_id, proposal_id, _ = parsed
+    user = db.query(TelegramUser).filter_by(id=user_id, telegram_chat_id=chat_id).first()
+    if user is None or user.status != TelegramUserStatus.active:
+        return None
+    return user, proposal_id
+
+
+def get_proposal_user(
+    draft_id: int,
+    request: Request,
+    db: DbSession,
+) -> TelegramUser:
+    """Authorize either a full dashboard user or a proposal-scoped access session."""
+    full_user = _try_get_dashboard_user(request, db)
+    if full_user is not None:
+        return full_user
+
+    scoped = _resolve_proposal_scoped_user(request, db)
+    if scoped is not None:
+        user, scoped_proposal_id = scoped
+        if scoped_proposal_id != draft_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access token is scoped to a different proposal",
+            )
+        return user
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication required",
+    )
+
+
+ProposalUser = Annotated[TelegramUser, Depends(get_proposal_user)]
 
 
 # ---------------------------------------------------------------------------
@@ -290,7 +385,14 @@ def api_generate_technical_proposal(
         project_title = project.title if project else f"مشروع #{draft.project_id}"
         proposal_title = draft.title or f"عرض فني v{draft.version}"
         base_url = settings.public_base_url.rstrip("/")
-        proposal_url = f"{base_url}/dashboard/proposals/{draft.id}"
+        raw_token, _ = create_proposal_access_token(
+            db,
+            proposal_id=draft.id,
+            owner_user_id=current_user.id,
+            settings=settings,
+        )
+        db.commit()
+        proposal_url = f"{base_url}/proposal-access/{raw_token}"
         try:
             notifier = TelegramNotifier(settings)
             notifier.send_proposal_created_notification(
@@ -333,7 +435,7 @@ def api_get_proposal(
     draft_id: int,
     request: Request,
     db: DbSession,
-    current_user: CurrentUser,
+    current_user: ProposalUser,
 ) -> dict[str, Any]:
     svc = TechnicalProposalService(db, request.app.state.settings)
     try:
@@ -351,7 +453,7 @@ def api_update_proposal(
     payload: UpdateProposalRequest,
     request: Request,
     db: DbSession,
-    current_user: CurrentUser,
+    current_user: ProposalUser,
 ) -> dict[str, Any]:
     svc = TechnicalProposalService(db, request.app.state.settings)
     try:
@@ -377,7 +479,7 @@ def api_regenerate_section(
     payload: RegenerateSectionRequest,
     request: Request,
     db: DbSession,
-    current_user: CurrentUser,
+    current_user: ProposalUser,
 ) -> dict[str, Any]:
     svc = TechnicalProposalService(db, request.app.state.settings)
     try:
@@ -406,7 +508,7 @@ def api_regenerate_full(
     draft_id: int,
     request: Request,
     db: DbSession,
-    current_user: CurrentUser,
+    current_user: ProposalUser,
     payload: RegenerateFullRequest | None = None,
 ) -> dict[str, Any]:
     body = payload or RegenerateFullRequest()
@@ -431,7 +533,7 @@ def api_duplicate_proposal(
     draft_id: int,
     request: Request,
     db: DbSession,
-    current_user: CurrentUser,
+    current_user: ProposalUser,
 ) -> dict[str, Any]:
     svc = TechnicalProposalService(db, request.app.state.settings)
     try:
@@ -448,7 +550,7 @@ def api_delete_proposal(
     draft_id: int,
     request: Request,
     db: DbSession,
-    current_user: CurrentUser,
+    current_user: ProposalUser,
 ) -> dict[str, str]:
     svc = TechnicalProposalService(db, request.app.state.settings)
     try:
@@ -465,7 +567,7 @@ def api_export_proposal_pdf(
     draft_id: int,
     request: Request,
     db: DbSession,
-    current_user: CurrentUser,
+    current_user: ProposalUser,
 ) -> Response:
     svc = TechnicalProposalService(db, request.app.state.settings)
     try:
@@ -498,11 +600,27 @@ def api_export_proposal_pdf(
 # ---------------------------------------------------------------------------
 
 
-def _page_shell(title: str, body: str, user: TelegramUser | None = None) -> HTMLResponse:
+def _page_shell(
+    title: str,
+    body: str,
+    user: TelegramUser | None = None,
+    *,
+    scoped_mode: bool = False,
+) -> HTMLResponse:
     nav = ""
     if user is not None:
         user_label = html.escape(user.first_name or str(user.telegram_chat_id))
-        nav = f"""
+        if scoped_mode:
+            nav = f"""
+        <nav class="topbar">
+          <div class="brand">Resova | مولّد العروض الفنية</div>
+          <div class="nav-links">
+            <span class="user-badge">{user_label}</span>
+          </div>
+        </nav>
+        """
+        else:
+            nav = f"""
         <nav class="topbar">
           <div class="brand">Resova | مولّد العروض الفنية</div>
           <div class="nav-links">
@@ -665,6 +783,7 @@ async def dashboard_login_submit(
 def dashboard_logout() -> RedirectResponse:
     resp = RedirectResponse(url="/dashboard/login", status_code=status.HTTP_303_SEE_OTHER)
     resp.delete_cookie(SESSION_COOKIE_NAME)
+    resp.delete_cookie(PROPOSAL_SCOPE_COOKIE_NAME)
     return resp
 
 
@@ -876,15 +995,110 @@ def dashboard_project_detail_page(
     return _page_shell(project.title, body, user)
 
 
+@router.get("/proposal-access/{token}")
+def proposal_direct_access(
+    token: str,
+    request: Request,
+    db: DbSession,
+) -> Response:
+    client_ip = request.client.host if request.client else "unknown"
+    if not proposal_access_rate_limiter.allow(client_ip):
+        resp = _page_shell(
+            "طلبات كثيرة",
+            """
+            <div class="card" style="max-width:520px; margin:48px auto;">
+              <h2>تم تجاوز الحد المسموح من المحاولات</h2>
+              <p style="color:var(--muted);">يرجى الانتظار قليلًا ثم إعادة المحاولة.</p>
+            </div>
+            """,
+        )
+        resp.status_code = status.HTTP_429_TOO_MANY_REQUESTS
+        resp.headers["Referrer-Policy"] = "no-referrer"
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+
+    verified = verify_proposal_access_token(db, token)
+    if verified is None:
+        resp = _page_shell(
+            "رابط غير صالح",
+            """
+            <div class="card" style="max-width:520px; margin:48px auto;">
+              <h2>تعذر فتح العرض الفني</h2>
+              <p style="color:var(--muted);">
+                رابط الوصول المباشر غير صالح أو منتهي الصلاحية أو تم إلغاؤه.
+                يمكنك فتح العرض من لوحة التحكم أو طلب إشعار جديد.
+              </p>
+              <a class="btn" href="/dashboard/login">تسجيل الدخول إلى لوحة التحكم</a>
+            </div>
+            """,
+        )
+        resp.status_code = status.HTTP_403_FORBIDDEN
+        resp.headers["Referrer-Policy"] = "no-referrer"
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+
+    record, draft, user = verified
+    db.commit()
+
+    settings: Settings = request.app.state.settings
+    exp_ts = int(record.expires_at.replace(tzinfo=UTC).timestamp())
+    scope_cookie = sign_proposal_scope_value(
+        user.id,
+        user.telegram_chat_id,
+        draft.id,
+        exp_ts,
+        settings,
+    )
+    resp = RedirectResponse(
+        url=f"/dashboard/proposals/{draft.id}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+    resp.set_cookie(
+        key=PROPOSAL_SCOPE_COOKIE_NAME,
+        value=scope_cookie,
+        httponly=True,
+        samesite="lax",
+        secure=settings.app_env == "production",
+        max_age=max(60, exp_ts - int(time.time())),
+    )
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 @router.get("/dashboard/proposals/{draft_id}", response_class=HTMLResponse)
 def dashboard_proposal_editor_page(
     draft_id: int,
     request: Request,
     db: DbSession,
 ) -> Response:
+    scoped_mode = False
     user = _try_get_dashboard_user(request, db)
     if user is None:
-        return RedirectResponse(url="/dashboard/login", status_code=status.HTTP_303_SEE_OTHER)
+        scoped = _resolve_proposal_scoped_user(request, db)
+        if scoped is None:
+            return RedirectResponse(
+                url="/dashboard/login", status_code=status.HTTP_303_SEE_OTHER
+            )
+        scoped_user, scoped_proposal_id = scoped
+        if scoped_proposal_id != draft_id:
+            err_resp = _page_shell(
+                "غير مصرح",
+                """
+                <div class="card" style="max-width:520px; margin:48px auto;">
+                  <h2>غير مصرح بالوصول</h2>
+                  <p style="color:var(--muted);">
+                    لا يمكنك استخدام رابط الوصول المباشر لفتح عرض فني آخر.
+                  </p>
+                </div>
+                """,
+                scoped_user,
+                scoped_mode=True,
+            )
+            err_resp.status_code = status.HTTP_403_FORBIDDEN
+            return err_resp
+        user = scoped_user
+        scoped_mode = True
 
     svc = TechnicalProposalService(db, request.app.state.settings)
     try:
@@ -1097,7 +1311,7 @@ def dashboard_proposal_editor_page(
     }}
     </script>
     """
-    return _page_shell("محرر العرض الفني", body, user)
+    return _page_shell("محرر العرض الفني", body, user, scoped_mode=scoped_mode)
 
 
 @router.get("/dashboard/profile", response_class=HTMLResponse)

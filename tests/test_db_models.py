@@ -31,6 +31,7 @@ EXPECTED_TABLES = {
     "notifications",
     "user_actions",
     "proposal_drafts",
+    "proposal_access_tokens",
     "auto_proposal_jobs",
     "sync_logs",
     "user_profile",
