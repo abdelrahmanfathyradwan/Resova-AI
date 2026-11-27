@@ -37,17 +37,18 @@ def _sample_track() -> Track:
 
 def test_shipped_profile_loads(profile: ClientProfile) -> None:
     assert profile.version >= 1
-    assert len(profile.tracks) == 3
+    assert len(profile.tracks) == 4
     assert {track.id for track in profile.tracks} == {
         "engineering",
+        "architectural_interior",
         "presentation_design",
         "cv_resume",
     }
-    assert profile.settings.min_match_score == 45
+    assert profile.settings.min_match_score == 65
     assert profile.settings.score_bands.strong == 85
     assert profile.settings.score_bands.good == 70
-    assert profile.settings.score_bands.moderate == 45
-    assert profile.settings.score_bands.weak == 45
+    assert profile.settings.score_bands.moderate == 65
+    assert profile.settings.score_bands.weak == 65
     assert profile.settings.notify_language == "ar"
     assert profile.settings.excluded_keywords == []
     assert profile.settings.min_budget is None
@@ -198,7 +199,12 @@ def test_duplicate_unconfirmed_skill_ids_rejected(profile: ClientProfile) -> Non
 
 def test_match_keywords_uses_english_plus_approved_only(profile: ClientProfile) -> None:
     mapping = profile.match_keywords()
-    assert set(mapping) == {"engineering", "presentation_design", "cv_resume"}
+    assert set(mapping) == {
+        "engineering",
+        "architectural_interior",
+        "presentation_design",
+        "cv_resume",
+    }
     for track in profile.tracks:
         approved_ar = [
             item.text for item in track.keywords_ar_proposed if item.approved
@@ -250,8 +256,10 @@ def test_proposed_track_id_cannot_clash_with_active_track(profile: ClientProfile
 def test_out_of_scope_domains_are_soft_and_unapproved(profile: ClientProfile) -> None:
     ids = [domain.id for domain in profile.out_of_scope_domains]
     assert ids == [
-        "architecture_landscape_interior_finishing",
-        "software_automation_development",
+        "software_web_app_development",
+        "graphic_design_logos_branding",
+        "fine_art_freehand_drawing",
+        "general_writing_translation_marketing",
         "weapons_firearms",
     ]
     assert all(domain.approved is False for domain in profile.out_of_scope_domains)
@@ -271,30 +279,119 @@ def test_duplicate_out_of_scope_domain_ids_rejected(profile: ClientProfile) -> N
 def test_arabic_keyword_lists_are_exactly_as_proposed(profile: ClientProfile) -> None:
     expected = {
         "engineering": [
+            "تصميم أنظمة مكافحة الحريق",
+            "تصميم أنظمة إنذار الحريق",
+            "مخططات مكافحة الحريق",
+            "مخططات إنذار الحريق",
             "مكافحة حريق",
             "إنذار حريق",
             "رش آلي",
             "شبكة إطفاء",
-            "تكييف وتهوية",
-            "رسومات تنفيذية",
-            "شوب دروينج",
-            "أوتوكاد",
-            "حصر كميات",
-            "مقايسة",
             "مضخات حريق",
+            "حسابات هيدروليكية",
+            "أنظمة إطفاء الغاز",
+            "FM200",
+            "شوب دروينج ميكانيكا",
+            "شوب دروينج فاير فايتنج",
+            "شوب دروينج",
+            "تصميم أنظمة التكييف HVAC",
+            "تصميم أنظمة التهوية",
+            "تصميم أنظمة MEP",
+            "تكييف وتهوية",
+            "HVAC",
+            "أعمال صحية",
+            "رسم مخططات ميكانيكية",
+            "رسم هندسي أوتوكاد",
+            "مخططات تنفيذية",
+            "رسومات تنفيذية",
+            "حصر كميات BOQ",
+            "حساب كميات هندسية",
+            "حصر كميات",
+            "إعداد تقارير هندسية",
+            "مراجعة المخططات الهندسية",
+            "رسومات مطابقة للواقع",
+            "رسومات As Built",
+            "مخططات ميكانيكية",
+            "أوتوكاد",
+            "مقايسة",
+        ],
+        "architectural_interior": [
+            "تصميم معماري",
+            "مخططات معمارية",
+            "تصميم داخلي",
+            "تصميم ديكور",
+            "ديكور داخلي",
+            "تصميم واجهات",
+            "تصميم فلل",
+            "توزيع فراغات",
+            "مخططات تنفيذية",
+            "تصميم ثلاثي الأبعاد",
+            "رندر معماري",
+            "تصميم داخلي 3D",
+            "تصميم خارجي 3D",
+            "موديل 3D",
+            "نمذجة ثلاثية الأبعاد",
+            "إظهار معماري",
+            "لقطات منظور ثلاثي الأبعاد",
+            "تصميم سكني",
+            "تصميم تجاري",
+            "تصميم مطابخ",
+            "تصميم أثاث",
         ],
         "presentation_design": [
+            "تصميم عروض تقديمية",
             "تصميم عرض تقديمي",
-            "بوربوينت",
+            "تصميم بوربوينت",
+            "تصميم برزنتيشن",
+            "عروض تقديمية احترافية",
+            "عرض تقديمي احترافي",
+            "تصميم عروض شركات",
+            "تصميم عروض أعمال",
+            "تصميم عروض استثمارية",
+            "تصميم بروفايل شركات",
             "بروفايل شركة",
+            "الملف التعريفي للشركة",
+            "تصميم Pitch Deck",
+            "Pitch Deck",
+            "Business Deck",
+            "بوربوينت",
+            "باور بوينت",
+            "عرض استثماري",
+            "إعادة تصميم عروض تقديمية",
+            "إعادة تصميم سلايدات",
+            "تحويل PDF إلى PowerPoint",
+            "تحويل ملفات إلى بوربوينت",
+            "تصميم عروض تدريبية",
+            "تصميم عروض تسويقية",
+            "عروض تسويقية",
+            "تصميم عروض تفاعلية",
+            "تنسيق عروض",
+            "سلايدات احترافية",
             "عرض احترافي",
         ],
         "cv_resume": [
+            "كتابة سيرة ذاتية",
+            "تصميم سيرة ذاتية",
+            "سيرة ذاتية ATS",
             "سيرة ذاتية",
-            "كتابة CV",
+            "سيرة ذاتية احترافية",
+            "CV احترافي",
+            "تطوير السيرة الذاتية",
             "تحسين السيرة الذاتية",
-            "لينكدإن",
+            "سيرة ذاتية متوافقة مع ATS",
+            "توافق ATS",
+            "خطاب تغطية",
             "خطاب تقديم",
+            "تحسين LinkedIn",
+            "سيرة ذاتية باللغة الإنجليزية",
+            "سيرة ذاتية باللغة العربية",
+            "سيرة ذاتية أوروبية Europass",
+            "كتابة CV",
+            "تصميم CV",
+            "تعديل سيرة ذاتية",
+            "صياغة سيرة ذاتية",
+            "حساب لينكد إن",
+            "لينكدإن",
         ],
     }
     for track in profile.tracks:

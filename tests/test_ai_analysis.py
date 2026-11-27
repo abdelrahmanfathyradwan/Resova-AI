@@ -163,7 +163,7 @@ def test_daily_limit_enforced(ai_settings: Settings) -> None:
 def test_score_to_band_thresholds(profile: ClientProfile) -> None:
     assert _score_to_band(90, profile) == ScoreBand.strong
     assert _score_to_band(75, profile) == ScoreBand.good
-    assert _score_to_band(55, profile) == ScoreBand.moderate
+    assert _score_to_band(66, profile) == ScoreBand.moderate
     assert _score_to_band(30, profile) == ScoreBand.below
 
 

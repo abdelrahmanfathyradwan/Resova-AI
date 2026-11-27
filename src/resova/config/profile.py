@@ -26,7 +26,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-TRACK_IDS = ("engineering", "presentation_design", "cv_resume")
+TRACK_IDS = ("engineering", "architectural_interior", "presentation_design", "cv_resume")
 
 
 class ArabicKeywordProposal(BaseModel):
@@ -104,8 +104,8 @@ class ScoreBands(BaseModel):
 
     strong: int
     good: int
-    moderate: int = 45
-    weak: int = 45
+    moderate: int = 65
+    weak: int = 65
 
     @model_validator(mode="after")
     def _check_band_order(self) -> ScoreBands:

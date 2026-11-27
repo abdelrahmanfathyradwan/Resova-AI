@@ -11,7 +11,7 @@
 #     confirmed: true.
 #   * proposed_tracks exceed the written profile. They are never used by matching until
 #     the client approves them (see docs/OPEN_QUESTIONS.md OQ-9).
-#   * out_of_scope_domains steer the AI and apply a SOFT score penalty - they are NOT
+#   * out_of_scope_domains steer the AI and apply a penalty - they are NOT
 #     hard keyword exclusions (see OQ-12).
 
 version: 1
@@ -20,6 +20,7 @@ version: 1
 titles:
   - Mechanical Engineer
   - Fire Protection & MEP Engineer
+  - Architectural & Interior Designer
   - Technical Office Engineer
   - Production Engineer
   - Professional Presentation & CV Designer
@@ -35,31 +36,57 @@ tracks:
     experience_years: 5
     keywords_en:
       - Fire Fighting System Design
+      - Fire Alarm System Design
       - Fire Protection
       - Fire Fighting
+      - Firefighting
       - Fire Alarm
       - Sprinkler System
       - Fire Pump
       - Fire Suppression
+      - Clean Agent Fire Suppression
+      - FM-200
+      - FM200
       - Hydraulic Calculations
       - Shop Drawings
+      - Shop Drawing
       - As-Built Drawings
+      - As Built Drawings
       - HVAC
-      - MEP Drawings
-      - MEP Coordination
+      - HVAC System Design
+      - Heating Ventilation and Air Conditioning
+      - Ventilation System Design
+      - Plumbing
       - Plumbing Drawings
+      - MEP Drawings
+      - MEP System Design
+      - MEP Coordination
       - Ductwork
       - AutoCAD 2D
+      - AutoCAD
       - BOQ
       - Quantity Takeoff
+      - Engineering Quantity Calculation
       - Material Submittals
       - Technical Reports
+      - Engineering Reports
       - Engineering Documentation
+      - Engineering Drawings Review
       - Technical Office
       - Production Engineering
       - Mechanical Engineering
+      - Mechanical Drawings
+      - Mechanical Shop Drawings
     # Approved Arabic keywords for matching
     keywords_ar_proposed:
+      - text: تصميم أنظمة مكافحة الحريق
+        approved: true
+      - text: تصميم أنظمة إنذار الحريق
+        approved: true
+      - text: مخططات مكافحة الحريق
+        approved: true
+      - text: مخططات إنذار الحريق
+        approved: true
       - text: مكافحة حريق
         approved: true
       - text: إنذار حريق
@@ -68,19 +95,131 @@ tracks:
         approved: true
       - text: شبكة إطفاء
         approved: true
-      - text: تكييف وتهوية
+      - text: مضخات حريق
         approved: true
-      - text: رسومات تنفيذية
+      - text: حسابات هيدروليكية
+        approved: true
+      - text: أنظمة إطفاء الغاز
+        approved: true
+      - text: FM200
+        approved: true
+      - text: شوب دروينج ميكانيكا
+        approved: true
+      - text: شوب دروينج فاير فايتنج
         approved: true
       - text: شوب دروينج
         approved: true
-      - text: أوتوكاد
+      - text: تصميم أنظمة التكييف HVAC
+        approved: true
+      - text: تصميم أنظمة التهوية
+        approved: true
+      - text: تصميم أنظمة MEP
+        approved: true
+      - text: تكييف وتهوية
+        approved: true
+      - text: HVAC
+        approved: true
+      - text: أعمال صحية
+        approved: true
+      - text: رسم مخططات ميكانيكية
+        approved: true
+      - text: رسم هندسي أوتوكاد
+        approved: true
+      - text: مخططات تنفيذية
+        approved: true
+      - text: رسومات تنفيذية
+        approved: true
+      - text: حصر كميات BOQ
+        approved: true
+      - text: حساب كميات هندسية
         approved: true
       - text: حصر كميات
         approved: true
+      - text: إعداد تقارير هندسية
+        approved: true
+      - text: مراجعة المخططات الهندسية
+        approved: true
+      - text: رسومات مطابقة للواقع
+        approved: true
+      - text: رسومات As Built
+        approved: true
+      - text: مخططات ميكانيكية
+        approved: true
+      - text: أوتوكاد
+        approved: true
       - text: مقايسة
         approved: false
-      - text: مضخات حريق
+
+  - id: architectural_interior
+    label: Architectural, Interior & 3D Design
+    experience_years: 5
+    keywords_en:
+      - Architectural Design
+      - Architectural Drawings
+      - Interior Design
+      - Interior Decor
+      - Space Planning
+      - Facade Design
+      - Villa Design
+      - 3D Modeling
+      - 3D Rendering
+      - 3D Design
+      - Interior 3D Design
+      - Exterior 3D Design
+      - Architectural Visualization
+      - 3D Perspective
+      - Residential Design
+      - Commercial Design
+      - Kitchen Design
+      - Furniture Design
+      - 3ds Max
+      - SketchUp
+      - Revit
+      - Lumion
+      - V-Ray
+      - AutoCAD Architecture
+    keywords_ar_proposed:
+      - text: تصميم معماري
+        approved: true
+      - text: مخططات معمارية
+        approved: true
+      - text: تصميم داخلي
+        approved: true
+      - text: تصميم ديكور
+        approved: true
+      - text: ديكور داخلي
+        approved: true
+      - text: تصميم واجهات
+        approved: true
+      - text: تصميم فلل
+        approved: true
+      - text: توزيع فراغات
+        approved: true
+      - text: مخططات تنفيذية
+        approved: true
+      - text: تصميم ثلاثي الأبعاد
+        approved: true
+      - text: رندر معماري
+        approved: true
+      - text: تصميم داخلي 3D
+        approved: true
+      - text: تصميم خارجي 3D
+        approved: true
+      - text: موديل 3D
+        approved: true
+      - text: نمذجة ثلاثية الأبعاد
+        approved: true
+      - text: إظهار معماري
+        approved: true
+      - text: لقطات منظور ثلاثي الأبعاد
+        approved: true
+      - text: تصميم سكني
+        approved: true
+      - text: تصميم تجاري
+        approved: true
+      - text: تصميم مطابخ
+        approved: true
+      - text: تصميم أثاث
         approved: true
 
   - id: presentation_design
@@ -88,6 +227,7 @@ tracks:
     experience_years: 8
     keywords_en:
       - PowerPoint
+      - PPT
       - Presentation Design
       - Business Presentation
       - Company Profile Deck
@@ -95,6 +235,8 @@ tracks:
       - Investor Deck
       - Corporate Presentation
       - Technical Presentation
+      - Training Presentation
+      - Interactive Presentation
       - Slide Design
       - Slide Redesign
       - Presentation Formatting
@@ -102,13 +244,64 @@ tracks:
       - PDF to PowerPoint
       - Report Presentation
       - Infographic Slides
+      - Marketing Presentation
     # Approved Arabic keywords for matching
     keywords_ar_proposed:
+      - text: تصميم عروض تقديمية
+        approved: true
       - text: تصميم عرض تقديمي
+        approved: true
+      - text: تصميم بوربوينت
+        approved: true
+      - text: تصميم برزنتيشن
+        approved: true
+      - text: عروض تقديمية احترافية
+        approved: true
+      - text: عرض تقديمي احترافي
+        approved: true
+      - text: تصميم عروض شركات
+        approved: true
+      - text: تصميم عروض أعمال
+        approved: true
+      - text: تصميم عروض استثمارية
+        approved: true
+      - text: تصميم بروفايل شركات
+        approved: true
+      - text: بروفايل شركة
+        approved: true
+      - text: الملف التعريفي للشركة
+        approved: true
+      - text: تصميم Pitch Deck
+        approved: true
+      - text: Pitch Deck
+        approved: true
+      - text: Business Deck
         approved: true
       - text: بوربوينت
         approved: true
-      - text: بروفايل شركة
+      - text: باور بوينت
+        approved: true
+      - text: عرض استثماري
+        approved: true
+      - text: إعادة تصميم عروض تقديمية
+        approved: true
+      - text: إعادة تصميم سلايدات
+        approved: true
+      - text: تحويل PDF إلى PowerPoint
+        approved: true
+      - text: تحويل ملفات إلى بوربوينت
+        approved: true
+      - text: تصميم عروض تدريبية
+        approved: true
+      - text: تصميم عروض تسويقية
+        approved: true
+      - text: عروض تسويقية
+        approved: true
+      - text: تصميم عروض تفاعلية
+        approved: true
+      - text: تنسيق عروض
+        approved: true
+      - text: سلايدات احترافية
         approved: true
       - text: عرض احترافي
         approved: true
@@ -121,32 +314,72 @@ tracks:
       - Resume Writing
       - ATS-Friendly CV
       - ATS Optimization
+      - ATS Compliance
       - CV Design
       - Resume Design
       - Resume Editing
       - Resume Rewriting
       - Resume Redesign
+      - Resume Development
       - LinkedIn Optimization
+      - LinkedIn Profile
       - Cover Letter
       - Executive CV
       - Technical CV
       - Curriculum Vitae
       - Professional Bio
+      - Europass CV
+      - English CV
+      - Arabic CV
+      - Professional CV
     # Approved Arabic keywords for matching
     keywords_ar_proposed:
+      - text: كتابة سيرة ذاتية
+        approved: true
+      - text: تصميم سيرة ذاتية
+        approved: true
+      - text: سيرة ذاتية ATS
+        approved: true
       - text: سيرة ذاتية
         approved: true
-      - text: كتابة CV
+      - text: سيرة ذاتية احترافية
+        approved: true
+      - text: CV احترافي
+        approved: true
+      - text: تطوير السيرة الذاتية
         approved: true
       - text: تحسين السيرة الذاتية
         approved: true
-      - text: لينكدإن
+      - text: سيرة ذاتية متوافقة مع ATS
+        approved: true
+      - text: توافق ATS
+        approved: true
+      - text: خطاب تغطية
         approved: true
       - text: خطاب تقديم
         approved: true
+      - text: تحسين LinkedIn
+        approved: true
+      - text: سيرة ذاتية باللغة الإنجليزية
+        approved: true
+      - text: سيرة ذاتية باللغة العربية
+        approved: true
+      - text: سيرة ذاتية أوروبية Europass
+        approved: true
+      - text: كتابة CV
+        approved: true
+      - text: تصميم CV
+        approved: true
+      - text: تعديل سيرة ذاتية
+        approved: true
+      - text: صياغة سيرة ذاتية
+        approved: true
+      - text: حساب لينكد إن
+        approved: true
+      - text: لينكدإن
+        approved: true
 
-# Candidate tracks that exceed the written profile. NOT used by matching until the
-# client approves them (OQ-9).
+# Candidate tracks that exceed the written profile.
 proposed_tracks:
   - id: architectural_cad_boq
     label: Architectural Drafting, CAD & BOQ
@@ -155,14 +388,19 @@ proposed_tracks:
       Accepted examples exceed the written profile (architectural drafting, CAD and
       BOQ work). Pending client approval before it can be used by matching.
 
-# Domains to steer the AI away from and penalise softly. NOT hard keyword exclusions,
-# and only applied once the client approves them (OQ-12).
+# Domains to steer the AI away from and penalise.
 out_of_scope_domains:
-  - id: architecture_landscape_interior_finishing
-    label: Architecture / landscape / interior design / finishing-materials consultation
+  - id: software_web_app_development
+    label: Web, mobile app, and backend software development
     approved: false
-  - id: software_automation_development
-    label: Software / automation development (incl. n8n / AI tooling), even when the deliverable is a presentation
+  - id: graphic_design_logos_branding
+    label: Graphic design, logos, visual identity, branding, and motion graphics
+    approved: false
+  - id: fine_art_freehand_drawing
+    label: Fine art, character illustration, portraits, comics, and freehand drawing
+    approved: false
+  - id: general_writing_translation_marketing
+    label: General content writing, blogging, articles translation, digital marketing, and SEO
     approved: false
   - id: weapons_firearms
     label: Weapons / firearms / ammunition components
@@ -191,16 +429,13 @@ unconfirmed_skills:
     confirmed: false
 
 settings:
-  min_match_score: 45
+  min_match_score: 65
   score_bands:
     strong: 85
     good: 70
-    moderate: 45
-    weak: 45
+    moderate: 65
+    weak: 65
   notify_language: ar
-  # TODO(client): keywords that must always disqualify a project (OQ-8).
   excluded_keywords: []
-  # Budget is NEVER an exclusion criterion; these two are informational only.
-  # TODO(client): confirm if any preference exists.
   min_budget: null
   preferred_duration: null
