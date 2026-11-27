@@ -46,6 +46,7 @@ class PollerScheduler:
         self._settings = settings
         self._engine = engine
         self._task: asyncio.Task[None] | None = None
+        self._auto_proposal_task: asyncio.Task[None] | None = None
         self._running = False
         self._is_leader = False
         self._lock_conn: Any = None
@@ -164,6 +165,11 @@ class PollerScheduler:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._task
             self._task = None
+        if self._auto_proposal_task is not None:
+            self._auto_proposal_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._auto_proposal_task
+            self._auto_proposal_task = None
         self._release_leader_lock()
         logger.info("Poller scheduler stopped.")
 
@@ -223,10 +229,10 @@ class PollerScheduler:
         logger.info("PollerScheduler: starting listing poll cycle...")
         try:
             from resova.db.base import utcnow
-            from resova.db.models import Platform, Project, SyncLog, SyncStatus
+            from resova.db.models import Platform, SyncLog, SyncStatus
             from resova.db.session import create_session_factory
+            from resova.services.auto_proposal import enqueue_if_eligible
             from resova.services.ingestion import IngestionService
-            from resova.services.proposal import ProposalService
             from resova.sources.listing_poller import ListingPoller
 
             engine = self._get_engine()
@@ -254,6 +260,7 @@ class PollerScheduler:
                 if not new_raw:
                     logger.info("PollerScheduler: no new projects discovered in this cycle.")
                     session.commit()
+                    self._schedule_auto_proposal_drain()
                     return
 
                 logger.info(
@@ -261,7 +268,6 @@ class PollerScheduler:
                     len(new_raw),
                 )
                 ingestion = IngestionService(session, self._settings)
-                proposal_svc = ProposalService(session, self._settings)
 
                 for raw in new_raw:
                     upsert_data = poller.normalize(raw)
@@ -276,14 +282,19 @@ class PollerScheduler:
                     )
 
                     project_id = res.get("project_id")
-                    if project_id and res.get("analysis"):
-                        proj = session.query(Project).filter_by(id=project_id).first()
-                        if proj:
-                            draft = proposal_svc.generate_draft(proj, language="ar")
+                    analysis = res.get("analysis")
+                    if project_id and analysis:
+                        job = enqueue_if_eligible(
+                            session,
+                            self._settings,
+                            project_id=project_id,
+                            score=analysis.get("score"),
+                        )
+                        if job is not None:
                             logger.info(
-                                "PollerScheduler: proposal draft %d created for project %d",
-                                draft.id,
-                                proj.id,
+                                "PollerScheduler: queued auto-proposal job %d for project %d",
+                                job.id,
+                                project_id,
                             )
 
                 # Flush any pending moderate digest notifications
@@ -296,6 +307,36 @@ class PollerScheduler:
 
                 sync_log.finished_at = utcnow()
                 session.commit()
+                self._schedule_auto_proposal_drain()
                 logger.info("PollerScheduler: poll cycle completed successfully.")
         except Exception as exc:
             logger.exception("PollerScheduler: poll cycle failed unexpectedly: %s", exc)
+
+    def _schedule_auto_proposal_drain(self) -> None:
+        """Launch background drain of pending auto-proposal jobs without blocking polling."""
+        if self._auto_proposal_task is not None and not self._auto_proposal_task.done():
+            return
+        try:
+            loop = asyncio.get_running_loop()
+            self._auto_proposal_task = loop.create_task(self._drain_auto_proposals())
+        except RuntimeError:
+            pass
+
+    async def _drain_auto_proposals(self) -> None:
+        """Process queued auto-proposal jobs in a worker thread."""
+        try:
+            from resova.db.session import create_session_factory
+            from resova.services.auto_proposal import process_pending_jobs
+
+            engine = self._get_engine()
+            if engine is None:
+                return
+            factory = create_session_factory(engine)
+            results = await asyncio.to_thread(process_pending_jobs, factory, self._settings)
+            if results:
+                logger.info(
+                    "PollerScheduler: processed %d auto-proposal job(s).",
+                    len(results),
+                )
+        except Exception as exc:
+            logger.warning("PollerScheduler: auto-proposal drain error: %s", exc)

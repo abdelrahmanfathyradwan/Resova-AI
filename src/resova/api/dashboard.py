@@ -14,8 +14,12 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
+from resova.config.profile import load_profile
 from resova.config.settings import Settings
 from resova.db.models import (
+    AutoProposalJob,
+    AutoProposalJobStatus,
+    Platform,
     Project,
     ProjectAnalysis,
     ProposalDraft,
@@ -741,6 +745,50 @@ def dashboard_project_detail_page(
     )
     svc = TechnicalProposalService(db, request.app.state.settings)
     drafts = svc.list_project_proposals(project.id, user.id)
+    auto_job = (
+        db.query(AutoProposalJob)
+        .filter_by(project_id=project.id, owner_user_id=user.id)
+        .first()
+    )
+    min_score = load_profile(request.app.state.settings.profile_path).settings.min_match_score
+    if auto_job is not None:
+        if auto_job.status in (
+            AutoProposalJobStatus.pending,
+            AutoProposalJobStatus.processing,
+        ):
+            auto_status_html = (
+                '<div class="card"><strong>حالة العرض التلقائي:</strong> '
+                '<span class="badge">⏳ جارٍ إنشاء العرض...</span></div>'
+            )
+        elif auto_job.status == AutoProposalJobStatus.generated and auto_job.draft_id:
+            auto_status_html = (
+                '<div class="card" style="display:flex; justify-content:space-between; '
+                'align-items:center;">'
+                '<div><strong>حالة العرض التلقائي:</strong> '
+                '<span class="badge badge-strong">✅ تم إنشاء العرض</span></div>'
+                f'<a class="btn btn-sm" href="/dashboard/proposals/{auto_job.draft_id}">'
+                "فتح العرض التلقائي</a></div>"
+            )
+        elif auto_job.status == AutoProposalJobStatus.failed:
+            err_txt = html.escape(auto_job.last_error or "خطأ غير معروف")
+            auto_status_html = (
+                '<div class="card"><strong>حالة العرض التلقائي:</strong> '
+                f'<span class="badge">⚠️ تعذر الإنشاء: {err_txt}</span></div>'
+            )
+        else:
+            auto_status_html = ""
+    elif project.platform != Platform.mostaql:
+        auto_status_html = (
+            '<div class="card"><strong>حالة العرض التلقائي:</strong> '
+            '<span class="badge">ℹ️ مفعّل لمشاريع مستقل المطابقة فقط</span></div>'
+        )
+    elif analysis is not None and analysis.score < min_score:
+        auto_status_html = (
+            '<div class="card"><strong>حالة العرض التلقائي:</strong> '
+            f'<span class="badge">ℹ️ لا توجد مطابقة كافية (أقل من {min_score}%)</span></div>'
+        )
+    else:
+        auto_status_html = ""
 
     analysis_html = (
         f"""
@@ -792,6 +840,7 @@ def dashboard_project_detail_page(
       <p style="white-space:pre-wrap;">{desc_html}</p>
     </div>
     {analysis_html}
+    {auto_status_html}
     <div class="card">
       <h3>مسودات العروض الفنية الخاصة بك</h3>
       {draft_links}

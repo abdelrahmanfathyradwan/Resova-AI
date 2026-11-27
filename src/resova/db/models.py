@@ -34,6 +34,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -82,6 +83,16 @@ class ProposalEditorStatus(enum.StrEnum):
     draft = "draft"
     edited = "edited"
     ready = "ready"
+
+
+class AutoProposalJobStatus(enum.StrEnum):
+    """Background processing state for automatic technical proposal generation."""
+
+    pending = "pending"
+    processing = "processing"
+    generated = "generated"
+    failed = "failed"
+    skipped = "skipped"
 
 
 class ScoreBand(enum.StrEnum):
@@ -375,3 +386,39 @@ class UserProfessionalProfile(Base, TimestampMixin):
     communication_style: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     user: Mapped[TelegramUser] = relationship(back_populates="professional_profile")
+
+
+class AutoProposalJob(Base, TimestampMixin):
+    """Idempotent background job tracking automatic proposal generation per project & owner."""
+
+    __tablename__ = "auto_proposal_jobs"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "owner_user_id",
+            name="uq_auto_proposal_job_project_owner",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    owner_user_id: Mapped[int] = mapped_column(
+        ForeignKey("telegram_users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    status: Mapped[AutoProposalJobStatus] = mapped_column(
+        _enum(AutoProposalJobStatus),
+        nullable=False,
+        default=AutoProposalJobStatus.pending,
+        index=True,
+    )
+    draft_id: Mapped[int | None] = mapped_column(
+        ForeignKey("proposal_drafts.id", ondelete="SET NULL"), nullable=True
+    )
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    telegram_notified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

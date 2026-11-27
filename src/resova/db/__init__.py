@@ -10,6 +10,8 @@ vendor-specific features, so switching to PostgreSQL is a configuration change.
 
 from resova.db.base import Base, TimestampMixin, utcnow
 from resova.db.models import (
+    AutoProposalJob,
+    AutoProposalJobStatus,
     DraftStatus,
     Notification,
     NotificationStatus,
@@ -44,6 +46,8 @@ from resova.db.session import (
 )
 
 __all__ = [
+    "AutoProposalJob",
+    "AutoProposalJobStatus",
     "Base",
     "DraftStatus",
     "LatencyStats",
