@@ -19,6 +19,8 @@ dependencies = [
     "beautifulsoup4>=4.12.3,<4.13",
     "uvicorn>=0.54.0,<0.55",
     "PyYAML>=6.0.3,<7.0",
+    "fpdf2>=2.8.0,<3.0",
+    "uharfbuzz>=0.45.0,<1.0",
 ]
 
 [project.optional-dependencies]

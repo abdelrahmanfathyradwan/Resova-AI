@@ -23,9 +23,10 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # ── Stage 2: runtime (minimal production image) ──
 FROM python:3.12-slim AS runtime
 
-# Runtime dependency: libpq5 for PostgreSQL; curl for container health check
+# Runtime dependency: libpq5 for PostgreSQL; curl for container health check;
+# fonts-dejavu-core for Arabic/Latin PDF export
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libpq5 curl && \
+    apt-get install -y --no-install-recommends libpq5 curl fonts-dejavu-core && \
     rm -rf /var/lib/apt/lists/*
 
 # Security: run as unprivileged user

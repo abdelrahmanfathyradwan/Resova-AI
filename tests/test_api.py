@@ -96,7 +96,7 @@ class TestSurface:
         with _client(
             monkeypatch, f"sqlite:///{(tmp_path / 'prod.db').as_posix()}", app_env="production"
         ) as c:
-            paths = {route.path for route in c.app.routes}
+            paths = {getattr(route, "path", None) for route in c.app.routes}
             assert paths.isdisjoint({"/docs", "/redoc", "/openapi.json"})
 
     def test_docs_available_in_development(
@@ -105,7 +105,7 @@ class TestSurface:
         """In dev mode (default), /docs should be accessible."""
         monkeypatch.setenv("APP_ENV", "development")
         with _client(monkeypatch, f"sqlite:///{(tmp_path / 'dev.db').as_posix()}") as c:
-            paths = {route.path for route in c.app.routes}
+            paths = {getattr(route, "path", None) for route in c.app.routes}
             assert "/docs" in paths
 
     def test_module_level_asgi_app_is_configured(self) -> None:

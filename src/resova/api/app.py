@@ -21,6 +21,7 @@ from sqlalchemy import Engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from resova import __version__
+from resova.api.dashboard import router as dashboard_router
 from resova.config.settings import Settings, get_settings
 from resova.db.session import create_db_engine
 from resova.scheduler.poller import PollerScheduler
@@ -120,6 +121,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             database="ok" if database_ok else "unavailable",
             environment=app_settings.app_env,
         )
+
+    app.include_router(dashboard_router)
 
     return app
 

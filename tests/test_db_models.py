@@ -23,7 +23,7 @@ from resova.db.session import create_db_engine, create_session_factory, session_
 
 ROOT = Path(__file__).resolve().parents[1]
 
-#: Exactly ten tables (+ Alembic's own ``alembic_version``).
+#: Expected tables (+ Alembic's own ``alembic_version``).
 EXPECTED_TABLES = {
     "projects",
     "source_messages",
@@ -33,6 +33,7 @@ EXPECTED_TABLES = {
     "proposal_drafts",
     "sync_logs",
     "user_profile",
+    "user_professional_profiles",
     "system_settings",
     "telegram_users",
 }

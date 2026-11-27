@@ -76,6 +76,14 @@ class DraftStatus(enum.StrEnum):
     discarded = "discarded"
 
 
+class ProposalEditorStatus(enum.StrEnum):
+    """Editorial workflow state for Technical Proposal drafts."""
+
+    draft = "draft"
+    edited = "edited"
+    ready = "ready"
+
+
 class ScoreBand(enum.StrEnum):
     strong = "strong"
     good = "good"
@@ -258,15 +266,28 @@ class ProposalDraft(Base, TimestampMixin):
     project_id: Mapped[int] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    owner_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("telegram_users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    title: Mapped[str | None] = mapped_column(String(512), nullable=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    sections_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    timeline_text: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    cost_text: Mapped[str | None] = mapped_column(String(256), nullable=True)
     language: Mapped[str] = mapped_column(String(8), nullable=False, default="ar")
     status: Mapped[DraftStatus] = mapped_column(
         _enum(DraftStatus), nullable=False, default=DraftStatus.draft
     )
+    editor_status: Mapped[ProposalEditorStatus] = mapped_column(
+        _enum(ProposalEditorStatus), nullable=False, default=ProposalEditorStatus.draft
+    )
+    is_ai_generated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    ai_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     generated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     project: Mapped[Project] = relationship(back_populates="drafts")
+    owner_user: Mapped[TelegramUser | None] = relationship(back_populates="proposals")
 
 
 class SyncLog(Base, TimestampMixin):
@@ -327,3 +348,30 @@ class TelegramUser(Base, TimestampMixin):
     registered_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     approved_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
+    proposals: Mapped[list[ProposalDraft]] = relationship(back_populates="owner_user")
+    professional_profile: Mapped[UserProfessionalProfile | None] = relationship(
+        back_populates="user", uselist=False, cascade="all, delete-orphan"
+    )
+
+
+class UserProfessionalProfile(Base, TimestampMixin):
+    """Optional user-provided professional metadata for tailoring technical proposals."""
+
+    __tablename__ = "user_professional_profiles"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("telegram_users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    professional_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    specialization: Mapped[str | None] = mapped_column(Text, nullable=True)
+    skills_services: Mapped[str | None] = mapped_column(Text, nullable=True)
+    portfolio_samples: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tools_software: Mapped[str | None] = mapped_column(Text, nullable=True)
+    communication_style: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    user: Mapped[TelegramUser] = relationship(back_populates="professional_profile")
